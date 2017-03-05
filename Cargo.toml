@@ -1,6 +1,33 @@
 [package]
 name = "mutagen"
-version = "0.1.0"
+version = "0.2.0"
 authors = ["Jacob Howard <jacob@havoc.io>"]
+description = """
+Mutagen is a cross-platform, continuous, bidirectional file synchronization
+utility designed to be simple, robust, and performant. It can operate locally or
+over SSH.
+"""
+# TODO: Add a documentation entry. I'm not sure if we'd want to have this point
+# to a rustdoc page (which would be expected but not useful) or the Mutagen
+# usage guide.
+homepage = "https://mutagen.io"
+repository = "https://github.com/havoc-io/mutagen"
+keywords = ["sync", "synchronization", "file", "rsync", "ssh"]
+categories = ["command-line-utilities", "development-tools", "filesystem"]
+license = "MIT"
+
+[badges]
+travis-ci = { repository = "havoc-io/mutagen" }
+appveyor = { repository = "havoc-io/mutagen" }
+
+[[bin]]
+name = "mutagen"
+path = "src/bin/mutagen/main.rs"
+doc = false
+
+[[bin]]
+name = "mutagen-agent"
+path = "src/bin/mutagen-agent/main.rs"
+doc = false
 
 [dependencies]
