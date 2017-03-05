@@ -1,0 +1,6 @@
+[package]
+name = "mutagen"
+version = "0.1.0"
+authors = ["Jacob Howard <jacob@havoc.io>"]
+
+[dependencies]
