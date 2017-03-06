@@ -25,4 +25,12 @@ name = "mutagen"
 path = "src/bin/mutagen/main.rs"
 doc = false
 
+# TODO: Once Cargo supports per-target dependencies, it would be nice to split
+# this list up into common (i.e. those dependencies used by the library and
+# binary) and binary-only. I don't think there would be any library-only
+# dependencies.
 [dependencies]
+clap = "2.20.5"
+
+[profile.release]
+lto = true
