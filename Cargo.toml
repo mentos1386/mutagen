@@ -25,9 +25,4 @@ name = "mutagen"
 path = "src/bin/mutagen/main.rs"
 doc = false
 
-[[bin]]
-name = "mutagen-agent"
-path = "src/bin/mutagen-agent/main.rs"
-doc = false
-
 [dependencies]
