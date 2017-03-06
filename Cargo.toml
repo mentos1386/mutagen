@@ -25,9 +25,15 @@ name = "mutagen"
 path = "src/bin/mutagen/main.rs"
 doc = false
 
+[[bin]]
+name = "mutagen-agent"
+path = "src/bin/mutagen-agent/main.rs"
+doc = false
+
 # TODO: Once Cargo supports per-target dependencies, it would be nice to split
-# this list up into common (i.e. those dependencies used by the library and
-# binary) and binary-only. I don't think there would be any library-only
+# this list up based on components. It doesn't really matter for now though,
+# because Rust won't try to link in dependencies that aren't specified using
+# "extern crate", so there's no real penalty for having this be the union of all
 # dependencies.
 [dependencies]
 clap = "2.20.5"
