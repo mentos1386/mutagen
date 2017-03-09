@@ -1,3 +1,5 @@
+//! Provides infrastructure for prompting.
+
 /// The name of the environment variable that the prompting program should look
 /// for to determine if it is being executed in prompt mode.
 pub const PROMPTER_ENVIRONMENT_VARIABLE: &'static str = "MUTAGEN_PROMPTER";

@@ -1,3 +1,5 @@
+//! Provides a uniform interface to a variety of hash functions.
+
 use std::fmt;
 use std::io;
 use sha1::Sha1 as Sha1Impl;

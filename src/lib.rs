@@ -1,3 +1,5 @@
+//! Provides version and legal information for Mutagen.
+
 #![recursion_limit = "1024"]
 
 #[macro_use]
@@ -9,6 +11,9 @@ extern crate sha1;
 use std::fmt;
 
 pub mod errors {
+    //! Provides error handling infrastructure for Mutagen via the error-chain
+    //! crate.
+
     error_chain! { }
 }
 
@@ -47,6 +52,9 @@ impl fmt::Display for Version {
     }
 }
 
+/// Contains all legal information for Mutagen and its dependencies.
+// TODO: This needs to be updated with *all* transitive dependencies. There are
+// a few tools that are supposed to be able to show these.
 pub const LEGAL_NOTICE: &'static str = "Mutagen (https://mutagen.io)
 
 Copyright (c) 2016 - 2017 Jacob Howard. All rights reserved.
