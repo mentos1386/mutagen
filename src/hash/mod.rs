@@ -1,5 +1,7 @@
 //! Provides a uniform interface to a variety of hash functions.
 
+#[cfg(test)] mod tests;
+
 use std::fmt;
 use std::io;
 use sha1::Sha1 as Sha1Impl;
@@ -115,29 +117,4 @@ impl Hasher for Blake2b {
     fn digest(self: Box<Self>) -> Digest {
         Digest(self.state.finalize().as_bytes().to_vec())
     }
-}
-
-/// Verifies the SHA1 algorithm implementation with a simple test string.
-#[test]
-fn test_sha1() {
-    let data = "The quick brown fox jumps over the lazy dog.";
-    let mut reader = data.as_bytes();
-    let mut hasher = Algorithm::Sha1.hasher();
-    let copied = io::copy(&mut reader, &mut *hasher).unwrap() as usize;
-    assert!(copied == data.len());
-    let digest = format!("{}", hasher.digest());
-    assert!(digest == "408d94384216f890ff7a0c3528e8bed1e0b01621");
-}
-
-/// Verifies the 32-byte BLAKE2b algorithm implementation with a simple test
-/// string.
-#[test]
-fn test_blake2b_32() {
-    let data = "The quick brown fox jumps over the lazy dog.";
-    let mut reader = data.as_bytes();
-    let mut hasher = Algorithm::Blake2b(32).hasher();
-    let copied = io::copy(&mut reader, &mut *hasher).unwrap() as usize;
-    assert!(copied == data.len());
-    let digest = format!("{}", hasher.digest());
-    assert!(digest == "69d7d3b0afba81826d27024c17f7f183659ed0812cf27b382eaef9fdc29b5712");
 }
