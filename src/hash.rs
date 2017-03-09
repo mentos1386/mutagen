@@ -3,21 +3,16 @@ use std::io;
 use sha1::Sha1 as Sha1Impl;
 use blake2_rfc::blake2b::Blake2b as Blake2bImpl;
 
+/// Represents a hashing algorithm.
 pub enum Algorithm {
+    /// Represents the SHA1 algorithm.
     Sha1,
+    /// Represents the BLAKE2b algorithm with variable length (in bytes).
     Blake2b(usize)
 }
 
-impl fmt::Display for Algorithm {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match *self {
-            Algorithm::Sha1 => write!(f, "SHA1"),
-            Algorithm::Blake2b(s) => write!(f, "BLAKE2b ({})", s),
-        }
-    }
-}
-
 impl Algorithm {
+    /// Constructs a new hasher for the algorithm.
     pub fn hasher(&self) -> Box<Hasher> {
         match *self {
             Algorithm::Sha1 => Box::new(Sha1::new()),
@@ -26,15 +21,38 @@ impl Algorithm {
     }
 }
 
-pub trait Hasher : io::Write {
-    fn digest(self: Box<Self>) -> Vec<u8>;
+/// Represents the digest of a hash algorithm. The raw underlying vector can be
+/// easily extracted if necessary.
+pub struct Digest(pub Vec<u8>);
+
+impl fmt::Display for Digest {
+    /// Formats the digest into a lower-case hexidecimal string with no prefix,
+    /// spaces, or other punctuation. All bytes are rendered as two character
+    /// string components, with 0-padding as necessary.
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        for &b in self.0.iter() {
+            try!(write!(f, "{:02x}", b));
+        }
+        Ok(())
+    }
 }
 
+/// Provides the common interface for hashers. Data can be fed into the hasher's
+/// state using the `Write` interface and the final hash computed using the
+/// `digest` method. The `write` method will always be successful for hashers.
+pub trait Hasher : io::Write {
+    /// Consumes the hasher and computes the resulting digest.
+    fn digest(self: Box<Self>) -> Digest;
+}
+
+/// Implements the `Hasher` trait for the SHA1 algorithm.
 struct Sha1 {
+    /// The underlying SHA1 hasher state.
     state: Sha1Impl,
 }
 
 impl Sha1 {
+    /// Constructs a new SHA1 hasher.
     fn new() -> Sha1 {
         Sha1 {
             state: Sha1Impl::new(),
@@ -43,27 +61,32 @@ impl Sha1 {
 }
 
 impl io::Write for Sha1 {
+    /// Feeds data into the hasher's state.
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         self.state.update(buf);
         Ok(buf.len())
     }
 
+    /// No-op that always succeeds.
     fn flush(&mut self) -> io::Result<()> {
         Ok(())
     }
 }
 
 impl Hasher for Sha1 {
-    fn digest(self: Box<Self>) -> Vec<u8> {
-        self.state.digest().bytes().to_vec()
+    /// Computes the final SHA1 digest. It will have a length of 20 bytes.
+    fn digest(self: Box<Self>) -> Digest {
+        Digest(self.state.digest().bytes().to_vec())
     }
 }
 
+/// Implements the `Hasher` trait for the BLAKE2b algorithm.
 struct Blake2b {
     state: Blake2bImpl,
 }
 
 impl Blake2b {
+    /// Constructs a new BLAKE2b hasher with the specified byte width.
     fn new(size: usize) -> Blake2b {
         Blake2b {
             state: Blake2bImpl::new(size),
@@ -72,18 +95,47 @@ impl Blake2b {
 }
 
 impl io::Write for Blake2b {
+    /// Feeds data into the hasher's state.
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         self.state.update(buf);
         Ok(buf.len())
     }
 
+    /// No-op that always succeeds.
     fn flush(&mut self) -> io::Result<()> {
         Ok(())
     }
 }
 
 impl Hasher for Blake2b {
-    fn digest(self: Box<Self>) -> Vec<u8> {
-        self.state.finalize().as_bytes().to_vec()
+    /// Computes the final BLAKE2b digest. It will have a length equal to the
+    /// specified width of the hasher.
+    fn digest(self: Box<Self>) -> Digest {
+        Digest(self.state.finalize().as_bytes().to_vec())
     }
+}
+
+/// Verifies the SHA1 algorithm implementation with a simple test string.
+#[test]
+fn test_sha1() {
+    let data = "The quick brown fox jumps over the lazy dog.";
+    let mut reader = data.as_bytes();
+    let mut hasher = Algorithm::Sha1.hasher();
+    let copied = io::copy(&mut reader, &mut *hasher).unwrap() as usize;
+    assert!(copied == data.len());
+    let digest = format!("{}", hasher.digest());
+    assert!(digest == "408d94384216f890ff7a0c3528e8bed1e0b01621");
+}
+
+/// Verifies the 32-byte BLAKE2b algorithm implementation with a simple test
+/// string.
+#[test]
+fn test_blake2b_32() {
+    let data = "The quick brown fox jumps over the lazy dog.";
+    let mut reader = data.as_bytes();
+    let mut hasher = Algorithm::Blake2b(32).hasher();
+    let copied = io::copy(&mut reader, &mut *hasher).unwrap() as usize;
+    assert!(copied == data.len());
+    let digest = format!("{}", hasher.digest());
+    assert!(digest == "69d7d3b0afba81826d27024c17f7f183659ed0812cf27b382eaef9fdc29b5712");
 }
