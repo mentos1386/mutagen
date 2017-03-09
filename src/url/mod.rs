@@ -2,8 +2,10 @@
 
 mod messages;
 
+#[cfg(test)] use protobuf::Message;
+
 use errors::Result;
-use self::messages::{Protocol, URL};
+pub use self::messages::{Protocol, URL};
 
 #[cfg(target_os = "windows")]
 /// Checks (using simple heuristics) if a path that looks like an SSH URL might
@@ -128,11 +130,24 @@ macro_rules! parse_tests {
             let (raw, succeed, protocol, username, hostname, port, path) = $value;
             match parse(raw) {
                 Ok(url) => {
+                    // Verify components.
                     assert_eq!(url.protocol, protocol);
                     assert_eq!(url.username, username);
                     assert_eq!(url.hostname, hostname);
                     assert_eq!(url.port, port);
                     assert_eq!(url.path, path);
+
+                    // Perform a serialization/deserialization cycle and
+                    // reverify components.
+                    let mut decoded = URL::new();
+                    decoded.merge_from_bytes(
+                        url.write_to_bytes().unwrap().as_slice()
+                    ).unwrap();
+                    assert_eq!(decoded.protocol, protocol);
+                    assert_eq!(decoded.username, username);
+                    assert_eq!(decoded.hostname, hostname);
+                    assert_eq!(decoded.port, port);
+                    assert_eq!(decoded.path, path);
                 },
                 Err(_) => {
                     assert!(!succeed);
