@@ -1,6 +1,18 @@
+#![recursion_limit = "1024"]
+
+#[macro_use]
+extern crate error_chain;
+
+extern crate blake2_rfc;
+extern crate sha1;
+
 use std::fmt;
 
-// Bring in submodules.
+pub mod errors {
+    error_chain! { }
+}
+
+pub mod hash;
 pub mod prompt;
 
 /// Represents a semver-style version with major, minor, and patch components.

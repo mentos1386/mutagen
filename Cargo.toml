@@ -36,7 +36,10 @@ doc = false
 # "extern crate", so there's no real penalty for having this be the union of all
 # dependencies.
 [dependencies]
+blake2-rfc = "0.2.17"
 clap = "2.20.5"
+error-chain = "0.10.0"
+sha1 = "0.2.0"
 
 [profile.release]
 lto = true
