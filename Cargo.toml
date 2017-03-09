@@ -39,6 +39,7 @@ doc = false
 blake2-rfc = "0.2.17"
 clap = "2.20.5"
 error-chain = "0.10.0"
+protobuf = "1.2.2"
 sha1 = "0.2.0"
 
 [profile.release]

@@ -2,13 +2,10 @@
 
 #![recursion_limit = "1024"]
 
-#[macro_use]
-extern crate error_chain;
-
+#[macro_use] extern crate error_chain;
 extern crate blake2_rfc;
+extern crate protobuf;
 extern crate sha1;
-
-use std::fmt;
 
 pub mod errors {
     //! Provides error handling infrastructure for Mutagen via the error-chain
@@ -19,6 +16,9 @@ pub mod errors {
 
 pub mod hash;
 pub mod prompt;
+pub mod url;
+
+use std::fmt;
 
 /// Represents a semver-style version with major, minor, and patch components.
 pub struct Version {
