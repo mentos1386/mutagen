@@ -39,9 +39,13 @@ fn too_low() {
 }
 
 #[test]
-fn too_low_by_nanosecond() {
+fn too_low_by_100_nanoseconds() {
+    // Ideally I'd like this test to check for being out of bounds by 1 ns, but
+    // on Windows the SystemTime type only has 100ns resolution, so we have to
+    // go at least that far over the limit, otherwise the time will just get
+    // rounded to the limit.
     let time = UNIX_EPOCH
-                - Duration::new((-TIMESTAMP_MINIMUM_SECONDS) as u64, 1);
+                - Duration::new((-TIMESTAMP_MINIMUM_SECONDS) as u64, 100);
     assert!(time.as_timestamp().is_err());
 }
 
