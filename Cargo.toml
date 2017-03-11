@@ -31,16 +31,21 @@ path = "src/bin/mutagen-agent/main.rs"
 doc = false
 
 # TODO: Once Cargo supports per-target dependencies, it would be nice to split
-# this list up based on components. It doesn't really matter for now though,
-# because Rust won't try to link in dependencies that aren't specified using
-# "extern crate", so there's no real penalty for having this be the union of all
-# dependencies.
+# this list up based on components. Just to be clear, I mean per-build-target,
+# not per-target-OS (which Rust already supports and which we already use). It
+# doesn't really matter for now though, because Rust won't try to link in
+# dependencies that aren't specified using "extern crate", so there's no real
+# penalty for having this be the union of all dependencies.
 [dependencies]
 blake2-rfc = "0.2.17"
 clap = "2.20.5"
 error-chain = "0.10.0"
 protobuf = "1.2.2"
 sha1 = "0.2.0"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+libc = "0.2.21"
+unicode-normalization = "0.1.4"
 
 [profile.release]
 lto = true

@@ -1,3 +1,5 @@
+//! Provides tests for the hash module.
+
 use std::io;
 use super::{Algorithm};
 

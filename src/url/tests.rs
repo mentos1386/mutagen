@@ -1,5 +1,6 @@
-use protobuf::Message;
+//! Provides tests for the url module.
 
+use protobuf::Message;
 use super::{parse, Protocol, URL};
 
 /// Generates tests of the parse function.
@@ -187,7 +188,7 @@ parse_tests! {
     ),
 }
 
-#[cfg(target_os = "windows")]
+#[cfg(windows)]
 parse_tests! {
     parse_windows_path: (
         r"C:\something",
@@ -218,7 +219,7 @@ parse_tests! {
     ),
 }
 
-#[cfg(not(target_os = "windows"))]
+#[cfg(unix)]
 parse_tests! {
     parse_windows_path: (
         r"C:\something",

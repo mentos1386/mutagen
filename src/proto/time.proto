@@ -1,0 +1,15 @@
+syntax = "proto3";
+
+package time;
+
+// This definition is taken from the Protocol Buffers Well-Known Type (WKT)
+// definition, and it's semantics should be treated as identical:
+//  https://github.com/google/protobuf/blob/master/src/google/protobuf/timestamp.proto
+// It is necessary to do this until the Rust Protocol Buffers implementation
+// supports WKTs, but it seems like there is some implementation conflict if
+// they want to keep supporting Protocol Buffers v2:
+//  https://github.com/stepancheg/rust-protobuf/issues/76#issuecomment-224136097
+message Timestamp {
+    int64 seconds = 1;
+    int32 nanos = 2;
+}

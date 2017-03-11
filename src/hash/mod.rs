@@ -1,6 +1,7 @@
 //! Provides a uniform interface to a variety of hash functions.
 
-#[cfg(test)] mod tests;
+#[cfg(test)]
+mod tests;
 
 use std::fmt;
 use std::io;

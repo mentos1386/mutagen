@@ -2,21 +2,30 @@
 
 #![recursion_limit = "1024"]
 
-#[macro_use] extern crate error_chain;
+#[macro_use]
+extern crate error_chain;
 extern crate blake2_rfc;
 extern crate protobuf;
 extern crate sha1;
 
+#[cfg(target_os = "macos")]
+extern crate libc;
+#[cfg(target_os = "macos")]
+extern crate unicode_normalization;
+
 pub mod errors {
     //! Provides error handling infrastructure for Mutagen via the error-chain
     //! crate.
-
     error_chain! { }
 }
-
 pub mod hash;
+pub mod sync;
 pub mod prompt;
+pub mod proto;
+pub mod time;
 pub mod url;
+#[cfg(test)]
+mod tests;
 
 use std::fmt;
 
