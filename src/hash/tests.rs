@@ -1,7 +1,7 @@
 //! Provides tests for the hash module.
 
 use std::io;
-use super::{Algorithm};
+use super::{Algorithm, Hasher};
 
 /// Generates tests of hashers.
 macro_rules! hasher_tests {
@@ -11,8 +11,8 @@ macro_rules! hasher_tests {
         fn $name() {
             let (value, algorithm, expected) = $value;
             let mut reader = value.as_bytes();
-            let mut hasher = algorithm.hasher();
-            let copied = io::copy(&mut reader, &mut *hasher).unwrap() as usize;
+            let mut hasher = Hasher::new(&algorithm);
+            let copied = io::copy(&mut reader, &mut hasher).unwrap() as usize;
             assert_eq!(copied, value.len());
             let digest = format!("{}", hasher.digest());
             assert_eq!(digest, expected);

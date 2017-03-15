@@ -7,10 +7,10 @@ mod tests;
 
 use std::collections::BTreeMap;
 use std::fs;
-use std::io::copy;
+use std::io;
 use std::path::Path;
 use super::errors::{Result, ResultExt};
-use super::hash::Algorithm;
+use super::hash::{Algorithm, Hasher};
 // TODO: Do we really need to re-export CacheEntry?
 pub use super::proto::sync::{CacheEntry, Cache};
 use super::time::{AsTimestamp, Order as TimeOrder};
@@ -32,7 +32,7 @@ pub enum Entry {
 
 struct Scanner<'a> {
     root: &'a Path,
-    hash: Algorithm,
+    hash: &'a Algorithm,
     cache: &'a Cache,
     new_cache: Cache,
     // TODO: Add ignorer.
@@ -86,8 +86,8 @@ impl<'a> Scanner<'a> {
                 let full_path = self.root.join(&path);
                 let mut file = fs::File::open(&full_path)
                                         .chain_err(|| "unable to open file")?;
-                let mut hasher = self.hash.hasher();
-                let copied = copy(&mut file, &mut *hasher)
+                let mut hasher = Hasher::new(self.hash);
+                let copied = io::copy(&mut file, &mut hasher)
                                 .chain_err(|| "unable to hash file contents")?;
                 if copied != size {
                     bail!("short copy when hashing");
@@ -190,7 +190,7 @@ impl<'a> Scanner<'a> {
 }
 
 pub fn scan<P: AsRef<Path>>(path: P,
-                            hash: Algorithm,
+                            hash: &Algorithm,
                             cache: &Cache,
                             ignores: &Vec<String>) -> Result<(Entry, Cache)> {
     // Create a scanner.
