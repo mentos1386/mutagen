@@ -2,10 +2,13 @@
 
 #![recursion_limit = "1024"]
 
+extern crate bincode;
 #[macro_use]
 extern crate error_chain;
 extern crate blake2_rfc;
 extern crate protobuf;
+#[macro_use]
+extern crate serde_derive;
 extern crate sha1;
 
 #[cfg(target_os = "macos")]
