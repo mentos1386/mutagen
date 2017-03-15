@@ -5,7 +5,9 @@ mod tests;
 
 use std::fmt;
 use std::io;
+
 use sha1::Sha1 as Sha1Impl;
+
 use blake2_rfc::blake2b::Blake2b as Blake2bImpl;
 
 /// Enumerates the supported hashing algorithms.

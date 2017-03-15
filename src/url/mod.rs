@@ -6,6 +6,12 @@ mod tests;
 use super::errors::Result;
 use super::proto::url::{Protocol, URL};
 
+#[cfg(unix)]
+/// No-op on POSIX systems, where local paths won't be mistaken for SSH URLs.
+fn is_windows_path(_: &str) -> bool {
+    false
+}
+
 #[cfg(windows)]
 /// Checks (using simple heuristics) if a path that looks like an SSH URL might
 /// actually be a local path. This check is only performed on Windows.
@@ -20,12 +26,6 @@ fn is_windows_path(raw: &str) -> bool {
             (bytes[0] >= ('A' as u8) && bytes[0] <= ('Z' as u8))) &&
         bytes[1] == (':' as u8) &&
         (bytes[2] == ('\\' as u8) || bytes[2] == ('/' as u8))
-}
-
-#[cfg(unix)]
-/// No-op on POSIX systems, where local paths won't be mistaken for SSH URLs.
-fn is_windows_path(_: &str) -> bool {
-    false
 }
 
 /// Attempts to parse a raw string into an SSH URL. This function will fail if

@@ -10,9 +10,10 @@ extern crate protobuf;
 #[macro_use]
 extern crate serde_derive;
 extern crate sha1;
-
-#[cfg(target_os = "macos")]
+#[cfg(unix)]
 extern crate libc;
+#[cfg(windows)]
+extern crate winapi;
 #[cfg(target_os = "macos")]
 extern crate unicode_normalization;
 
@@ -24,6 +25,7 @@ pub mod errors {
 pub mod hash;
 pub mod sync;
 pub mod prompt;
+pub mod process;
 pub mod proto;
 pub mod time;
 pub mod url;

@@ -1,5 +1,7 @@
 use clap::{App, AppSettings, Arg, ArgMatches, SubCommand};
 
+use mutagen::errors::{Result, ResultExt};
+
 pub fn subcommand<'a, 'b>() -> App<'a, 'b> {
     SubCommand::with_name("list")
         .setting(AppSettings::ArgRequiredElseHelp)
@@ -16,6 +18,7 @@ pub fn subcommand<'a, 'b>() -> App<'a, 'b> {
             .help("Filters listing to a single session"))
 }
 
-pub fn main(arguments: &ArgMatches) {
+pub fn main(arguments: &ArgMatches) -> Result<()> {
     println!("list {:?}", arguments);
+    bail!("list not implemented");
 }

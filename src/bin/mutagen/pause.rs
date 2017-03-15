@@ -1,5 +1,7 @@
 use clap::{App, AppSettings, Arg, ArgMatches, SubCommand};
 
+use mutagen::errors::{Result, ResultExt};
+
 pub fn subcommand<'a, 'b>() -> App<'a, 'b> {
     SubCommand::with_name("pause")
         .setting(AppSettings::ArgRequiredElseHelp)
@@ -12,6 +14,7 @@ pub fn subcommand<'a, 'b>() -> App<'a, 'b> {
             .help("Specifies the session to pause"))
 }
 
-pub fn main(arguments: &ArgMatches) {
+pub fn main(arguments: &ArgMatches) -> Result<()> {
     println!("pause {:?}", arguments);
+    bail!("pause not implemented");
 }

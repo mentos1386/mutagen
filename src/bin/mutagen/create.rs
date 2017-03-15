@@ -1,5 +1,7 @@
 use clap::{App, AppSettings, Arg, ArgMatches, SubCommand};
 
+use mutagen::errors::{Result, ResultExt};
+
 pub fn subcommand<'a, 'b>() -> App<'a, 'b> {
     SubCommand::with_name("create")
         .setting(AppSettings::ArgRequiredElseHelp)
@@ -23,6 +25,7 @@ pub fn subcommand<'a, 'b>() -> App<'a, 'b> {
             .help("Specifies the beta endpoint URL"))
 }
 
-pub fn main(arguments: &ArgMatches) {
+pub fn main(arguments: &ArgMatches) -> Result<()> {
     println!("create {:?}", arguments);
+    bail!("create not implemented");
 }

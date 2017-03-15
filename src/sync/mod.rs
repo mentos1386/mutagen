@@ -8,16 +8,15 @@ mod tests;
 use std::collections::BTreeMap;
 use std::fs;
 use std::io;
+#[cfg(unix)]
+use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
+
 use super::errors::{Result, ResultExt};
 use super::hash::{Algorithm, Hasher};
 // TODO: Do we really need to re-export CacheEntry?
 pub use super::proto::sync::{CacheEntry, Cache};
 use super::time::{AsTimestamp, Order as TimeOrder};
-
-#[cfg(unix)]
-use std::os::unix::fs::PermissionsExt;
-
 #[cfg(target_os = "macos")]
 use self::sys::{decomposes_unicode, recompose_unicode_name};
 

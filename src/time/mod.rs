@@ -6,6 +6,7 @@
 mod tests;
 
 use std::time::{SystemTime, UNIX_EPOCH};
+
 use super::errors::Result;
 use super::proto::time::Timestamp;
 
