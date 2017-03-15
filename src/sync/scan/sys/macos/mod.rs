@@ -8,8 +8,10 @@ use std::os::unix::ffi::OsStrExt;
 use std::mem;
 use std::path::Path;
 use libc;
+
 use unicode_normalization::UnicodeNormalization;
-use super::super::super::errors::{Result, ResultExt};
+
+use super::super::super::super::errors::{Result, ResultExt};
 
 pub fn decomposes_unicode<P: AsRef<Path>>(path: P) -> Result<bool> {
     // Convert the path to a C string suitable for FFI usage.
