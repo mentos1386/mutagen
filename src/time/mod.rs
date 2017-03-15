@@ -55,7 +55,7 @@ impl AsTimestamp for SystemTime {
         // allows us to compute the negative duration. Because the Timestamp
         // message type uses signed values, we have to do some boundary checks.
         match self.duration_since(UNIX_EPOCH) {
-            Ok(duration) => {
+            Ok(ref duration) => {
                 // Compute the seconds component and make sure it is below the
                 // maximum value. Since the maximum value is typed as an i64, we
                 // can also be sure we won't overflow an i64 when converting.
@@ -74,7 +74,7 @@ impl AsTimestamp for SystemTime {
                 timestamp.seconds = seconds as i64;
                 timestamp.nanos = nanos as i32;
             },
-            Err(negative) => {
+            Err(ref negative) => {
                 // Extract the negative duration.
                 let duration = negative.duration();
 
