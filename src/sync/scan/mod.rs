@@ -18,6 +18,7 @@ use super::super::hash::{Algorithm, Hasher};
 pub use super::super::proto::sync::{CacheEntry, Cache};
 use super::super::time::{AsTimestamp, Order as TimeOrder};
 use super::entry::Entry;
+use self::ignore::Ignorer;
 #[cfg(target_os = "macos")]
 use self::sys::macos::{decomposes_unicode, recompose_unicode_name};
 
@@ -26,7 +27,7 @@ struct Scanner<'a> {
     hash: &'a Algorithm,
     cache: &'a Cache,
     new_cache: Cache,
-    // TODO: Add ignorer.
+    ignorer: Ignorer,
 }
 
 impl<'a> Scanner<'a> {
@@ -146,14 +147,19 @@ impl<'a> Scanner<'a> {
             // Compute the content path relative to the root. We do this
             // manually (rather than Path::join) because we want the result to
             // be a String rather than a PathBuf. That saves us some UTF-8
-            // validation and additional allocations due to conversions.
+            // validation and additional allocations due to conversions. We also
+            // need '/' joins on Windows (where they are still valid paths) in
+            // order for globs to work.
             let entry_path = if path.len() > 0 {
                 format!("{}/{}", path, entry_name)
             } else {
                 entry_name.clone()
             };
 
-            // TODO: Check if the path is ignored.
+            // Check if the path is ignored.
+            if self.ignorer.ignored(&entry_path) {
+                continue
+            }
 
             // Grab the entry metadata.
             let metadata = entry.metadata()
@@ -180,17 +186,21 @@ impl<'a> Scanner<'a> {
     }
 }
 
-pub fn scan<P: AsRef<Path>>(path: P,
-                            hash: &Algorithm,
-                            cache: &Cache,
-                            ignores: &Vec<String>) -> Result<(Entry, Cache)> {
+pub fn scan<P, I, S>(path: P,
+                     hash: &Algorithm,
+                     cache: &Cache,
+                     ignores: I) -> Result<(Entry, Cache)> where
+                    P: AsRef<Path>,
+                    I: IntoIterator<Item=S>,
+                    S: AsRef<str> {
     // Create a scanner.
     let mut scanner = Scanner{
         root: path.as_ref(),
         hash: hash,
         cache: cache,
         new_cache: Cache::new(),
-        // TODO: Add ignorer.
+        ignorer: Ignorer::new(ignores)
+                    .chain_err(|| "unable to construct ignorer")?,
     };
 
     // Grab root metadata. We use the metadata function (which follows

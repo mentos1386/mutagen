@@ -3,9 +3,10 @@
 #![recursion_limit = "1024"]
 
 extern crate bincode;
+extern crate blake2_rfc;
 #[macro_use]
 extern crate error_chain;
-extern crate blake2_rfc;
+extern crate glob;
 extern crate protobuf;
 #[macro_use]
 extern crate serde_derive;

@@ -3,7 +3,7 @@
 use protobuf::Message;
 use super::{parse, Protocol, URL};
 
-/// Generates tests of the parse function.
+/// Generates tests of the `parse` function.
 macro_rules! parse_tests {
     ($($name:ident: $value:expr,)*) => {
     $(

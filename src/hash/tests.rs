@@ -3,7 +3,7 @@
 use std::io;
 use super::{Algorithm, Hasher};
 
-/// Generates tests of hashers.
+/// Generates tests of hash algorithms.
 macro_rules! hasher_tests {
     ($($name:ident: $value:expr,)*) => {
     $(
