@@ -5,6 +5,7 @@
 #[cfg(test)]
 mod tests;
 
+use std::cmp::Ordering;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use super::errors::Result;
@@ -125,35 +126,25 @@ impl AsTimestamp for SystemTime {
     }
 }
 
-/// Provides an ordering for timestamps.
-#[derive(PartialEq)]
-pub enum Order {
-    Ascending,
-    Equal,
-    Descending,
-}
-
-impl Order {
-    /// Computes a timestamp ordering. Ideally we'd implement `Eq` and `Ord` on
-    /// the timestamp message directly, but this isn't possible due to the use
-    /// of generated code.
-    pub fn compute(first: &Timestamp, second: &Timestamp) -> Order {
-        // Check if one component is lower than the other. This strategy relies
-        // on two facts: nanoseconds are always positive and count forward and
-        // they are restricted to [0, 999,999,999]. Without these restrictions,
-        // we'd have to perform some sort of normalization pass on the
-        // timestamps first.
-        if first.seconds < second.seconds {
-            return Order::Ascending;
-        } else if second.seconds < first.seconds {
-            return Order::Descending;
-        } else if first.nanos < second.nanos {
-            return Order::Ascending;
-        } else if second.nanos < first.nanos {
-            return Order::Descending;
-        }
-
-        // Both components must be equal.
-        Order::Equal
+/// Creates a complete ordering for `Timestamp` messages. This has to be
+/// implemented as a free function (rather than implementing `Ord`) since the
+/// `Timestamp` type is in a generated module that we can't easily edit.
+pub fn compare(first: &Timestamp, second: &Timestamp) -> Ordering {
+    // Check if one component is lower than the other. This strategy relies
+    // on two facts: nanoseconds are always positive and count forward and
+    // they are restricted to [0, 999,999,999]. Without these restrictions,
+    // we'd have to perform some sort of normalization pass on the
+    // timestamps first.
+    if first.seconds < second.seconds {
+        return Ordering::Less;
+    } else if second.seconds < first.seconds {
+        return Ordering::Greater;
+    } else if first.nanos < second.nanos {
+        return Ordering::Less;
+    } else if second.nanos < first.nanos {
+        return Ordering::Greater;
     }
+
+    // Both components must be equal.
+    Ordering::Equal
 }

@@ -6,6 +6,7 @@ mod sys;
 #[cfg(test)]
 mod tests;
 
+use std::cmp::Ordering;
 use std::collections::BTreeMap;
 use std::fs;
 use std::io;
@@ -16,7 +17,7 @@ use std::path::Path;
 use super::super::errors::{Result, ResultExt};
 use super::super::hash::{Algorithm, Hasher};
 pub use super::super::proto::sync::{CacheEntry, Cache};
-use super::super::time::{AsTimestamp, Order as TimeOrder};
+use super::super::time::{AsTimestamp, compare as time_compare};
 use super::entry::Entry;
 use super::path::join;
 use self::ignore::Ignorer;
@@ -61,10 +62,10 @@ impl<'a> Scanner<'a> {
         let mut cache_hit = self.cache.get_entries().get(&path);
         if let Some(entry) = cache_hit {
             let matching = entry.has_modification_time() &&
-                TimeOrder::compute(
+                time_compare(
                     entry.get_modification_time(),
                     &modification_time
-                ) == TimeOrder::Equal &&
+                ) == Ordering::Equal &&
                 entry.size == size;
             if !matching {
                 cache_hit = None;
