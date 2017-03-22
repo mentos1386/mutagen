@@ -1,4 +1,4 @@
-//! Provides tests for the hash module.
+//! Provides tests for the `hash` module.
 
 use std::io;
 use super::{Algorithm, Hasher};

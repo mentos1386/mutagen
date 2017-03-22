@@ -1,4 +1,4 @@
-//! Provides tests for the url module.
+//! Provides tests for the `url` module.
 
 use protobuf::Message;
 use super::{parse, Protocol, URL};

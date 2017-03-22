@@ -18,6 +18,7 @@ use super::super::hash::{Algorithm, Hasher};
 pub use super::super::proto::sync::{CacheEntry, Cache};
 use super::super::time::{AsTimestamp, Order as TimeOrder};
 use super::entry::Entry;
+use super::path::join;
 use self::ignore::Ignorer;
 #[cfg(target_os = "macos")]
 use self::sys::macos::{decomposes_unicode, recompose_unicode_name};
@@ -144,17 +145,8 @@ impl<'a> Scanner<'a> {
                 None => bail!("unable to convert entry name to UTF-8"),
             };
 
-            // Compute the content path relative to the root. We do this
-            // manually (rather than Path::join) because we want the result to
-            // be a String rather than a PathBuf. That saves us some UTF-8
-            // validation and additional allocations due to conversions. We also
-            // need '/' joins on Windows (where they are still valid paths) in
-            // order for globs to work.
-            let entry_path = if path.len() > 0 {
-                format!("{}/{}", path, entry_name)
-            } else {
-                entry_name.clone()
-            };
+            // Compute the content path relative to the root.
+            let entry_path = join(&path, &entry_name);
 
             // Check if the path is ignored.
             if self.ignorer.ignored(&entry_path) {
@@ -189,7 +181,7 @@ impl<'a> Scanner<'a> {
 pub fn scan<P, I, S>(path: P,
                      hash: &Algorithm,
                      cache: &Cache,
-                     ignores: I) -> Result<(Entry, Cache)> where
+                     ignores: I) -> Result<(Option<Entry>, Cache)> where
                     P: AsRef<Path>,
                     I: IntoIterator<Item=S>,
                     S: AsRef<str> {
@@ -206,6 +198,9 @@ pub fn scan<P, I, S>(path: P,
     // Grab root metadata. We use the metadata function (which follows
     // symlinks), as opposed to symlink_metadata, because we DO want to follow
     // symbolic links at the root.
+    // TODO: I want a way to determine if failure here is due to the path not
+    // existing and return Ok(None, cache) in that case. We'll need to write an
+    // error extension for this. Can use raw_os_error on io::Error.
     let metadata = fs::metadata(path.as_ref())
                     .chain_err(|| "unable to get path metadata")?;
 
@@ -220,5 +215,5 @@ pub fn scan<P, I, S>(path: P,
     }.chain_err(|| "unable to scan root")?;
 
     // Success.
-    Ok((root_entry, scanner.new_cache))
+    Ok((Some(root_entry), scanner.new_cache))
 }

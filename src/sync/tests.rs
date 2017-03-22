@@ -1,3 +1,3 @@
-//! Provides tests for the sync module.
+//! Provides tests for the `sync` module.
 
 // TODO: Implement.

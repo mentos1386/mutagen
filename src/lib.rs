@@ -7,6 +7,7 @@ extern crate blake2_rfc;
 #[macro_use]
 extern crate error_chain;
 extern crate glob;
+extern crate ordered_iter;
 extern crate protobuf;
 #[macro_use]
 extern crate serde_derive;
@@ -17,6 +18,9 @@ extern crate libc;
 extern crate winapi;
 #[cfg(target_os = "macos")]
 extern crate unicode_normalization;
+#[cfg(test)]
+#[macro_use]
+extern crate maplit;
 
 pub mod errors {
     //! Provides error handling infrastructure for Mutagen via the error-chain

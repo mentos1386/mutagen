@@ -1,6 +1,7 @@
-//! Provides tests for the ignore module. We don't go overboard with the testing
-//! the pattern matching, because that's well-tested in the `glob` crate. All we
-//! really need to verify is that the negation syntax is working correctly.
+//! Provides tests for the `ignore` module. We don't go overboard with the
+//! testing the pattern matching, because that's well-tested in the `glob`
+//! crate. All we really need to verify is that the negation syntax is working
+//! correctly.
 
 use super::Ignorer;
 

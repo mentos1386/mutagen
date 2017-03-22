@@ -43,6 +43,7 @@ clap = "2.20.5"
 error-chain = "0.10.0"
 fs2 = "0.4.1"
 glob = "0.2.11"
+ordered_iter = "0.1.0"
 protobuf = "1.2.2"
 serde = "0.9.11"
 serde_derive = "0.9.11"
@@ -56,6 +57,9 @@ libc = "0.2.21"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 unicode-normalization = "0.1.4"
+
+[dev-dependencies]
+maplit = "0.1.4"
 
 [profile.release]
 lto = true

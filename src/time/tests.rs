@@ -1,4 +1,4 @@
-//! Provides tests for the time module.
+//! Provides tests for the `time` module.
 
 use std::time::{UNIX_EPOCH, SystemTime, Duration};
 use protobuf::Message;
