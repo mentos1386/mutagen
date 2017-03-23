@@ -1,65 +1,72 @@
-//! Provides tests for the `diff` module.
+//! Provides tests for the `reconcile` module.
 
 use super::super::entry::Entry::{File, Directory};
-use super::super::change::Change;
+use super::super::change::{Change, Changes};
 use super::diff;
 
 #[test]
-fn test_trivial() {
-    assert_eq!(diff("".to_owned(), &None, &None).len(), 0);
-}
-
-#[test]
-fn test_unchanged() {
-    let base = Some(File{executable: true, digest: vec![1, 2, 3]});
-    let target = Some(File{executable: true, digest: vec![1, 2, 3]});
-    let changes = diff("".to_owned(), &base, &target);
+fn diff_trivial() {
+    let mut changes = Changes::new();
+    diff(&mut changes, "".to_owned(), None, None);
     assert_eq!(changes.len(), 0);
 }
 
 #[test]
-fn test_creation() {
-    let created = Some(File{executable: true, digest: vec![]});
-    let changes = diff("".to_owned(), &None, &created);
-    assert_eq!(changes.len(), 1);
-    assert_eq!(changes[0].path, "");
-    assert_eq!(changes[0].old, None);
-    assert_eq!(changes[0].new, created);
+fn diff_unchanged() {
+    let base = File{executable: true, digest: vec![1, 2, 3]};
+    let target = File{executable: true, digest: vec![1, 2, 3]};
+    let mut changes = Changes::new();
+    diff(&mut changes, "".to_owned(), Some(&base), Some(&target));
+    assert_eq!(changes.len(), 0);
 }
 
 #[test]
-fn test_creation_root_subpath() {
-    let created = Some(File{executable: true, digest: vec![]});
-    let changes = diff("child path".to_owned(), &None, &created);
+fn diff_creation() {
+    let created = File{executable: true, digest: vec![]};
+    let mut changes = Changes::new();
+    diff(&mut changes, "".to_owned(), None, Some(&created));
+    assert_eq!(changes.len(), 1);
+    assert_eq!(changes[0].path, "");
+    assert_eq!(changes[0].old, None);
+    assert_eq!(changes[0].new, Some(created));
+}
+
+#[test]
+fn diff_creation_root_subpath() {
+    let created = File{executable: true, digest: vec![]};
+    let mut changes = Changes::new();
+    diff(&mut changes, "child path".to_owned(), None, Some(&created));
     assert_eq!(changes.len(), 1);
     assert_eq!(changes[0].path, "child path");
     assert_eq!(changes[0].old, None);
-    assert_eq!(changes[0].new, created);
+    assert_eq!(changes[0].new, Some(created));
 }
 
 #[test]
-fn test_deletion() {
-    let deleted = Some(File{executable: true, digest: vec![]});
-    let changes = diff("".to_owned(), &deleted, &None);
+fn diff_deletion() {
+    let deleted = File{executable: true, digest: vec![]};
+    let mut changes = Changes::new();
+    diff(&mut changes, "".to_owned(), Some(&deleted), None);
     assert_eq!(changes.len(), 1);
     assert_eq!(changes[0].path, "");
-    assert_eq!(changes[0].old, deleted);
+    assert_eq!(changes[0].old, Some(deleted));
     assert_eq!(changes[0].new, None);
 }
 
 #[test]
-fn test_change_root_type() {
-    let deleted = Some(File{executable: true, digest: vec![]});
-    let created = Some(Directory(btreemap!{}));
-    let changes = diff("".to_owned(), &deleted, &created);
+fn diff_change_root_type() {
+    let deleted = File{executable: true, digest: vec![]};
+    let created = Directory(btreemap!{});
+    let mut changes = Changes::new();
+    diff(&mut changes, "".to_owned(), Some(&deleted), Some(&created));
     assert_eq!(changes.len(), 1);
     assert_eq!(changes[0].path, "");
-    assert_eq!(changes[0].old, deleted);
-    assert_eq!(changes[0].new, created);
+    assert_eq!(changes[0].old, Some(deleted));
+    assert_eq!(changes[0].new, Some(created));
 }
 
 #[test]
-fn test_delta() {
+fn diff_delta() {
     // Create some test entries.
     let same_file = File{executable: true, digest: vec![4, 5, 6]};
     let same_directory = Directory(btreemap!{});
@@ -255,7 +262,8 @@ fn test_delta() {
     ];
 
     // Compute the actual diff.
-    let changes = diff("".to_owned(), &Some(base), &Some(target));
+    let mut changes = Changes::new();
+    diff(&mut changes, "".to_owned(), Some(&base), Some(&target));
 
     // Verify that the diff is as expected. We do this via iteration (rather
     // than a direct vector comparison) so that assert failures will be easier

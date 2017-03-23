@@ -2,9 +2,10 @@
 //! process.
 
 pub mod change;
-mod diff;
+pub mod conflict;
 pub mod entry;
 mod path;
+pub mod reconcile;
 pub mod scan;
 #[cfg(test)]
 mod tests;

@@ -36,6 +36,8 @@ doc = false
 # doesn't really matter for now though, because Rust won't try to link in
 # dependencies that aren't specified using "extern crate", so there's no real
 # penalty for having this be the union of all dependencies.
+# TODO: Create an issue on the ordered_iter crate asking for a new release to be
+# published on crates.io.
 [dependencies]
 bincode = "1.0.0-alpha5"
 blake2-rfc = "0.2.17"
@@ -43,7 +45,7 @@ clap = "2.20.5"
 error-chain = "0.10.0"
 fs2 = "0.4.1"
 glob = "0.2.11"
-ordered_iter = "0.1.0"
+ordered_iter = {git = "https://github.com/havoc-io/ordered_iter", rev = "924e3cab0f1bf70fdd5bee7f91d584c6b2837fd8"}
 protobuf = "1.2.2"
 serde = "0.9.11"
 serde_derive = "0.9.11"
