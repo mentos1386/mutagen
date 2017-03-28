@@ -10,7 +10,8 @@ pub fn join(first: &str, second: &str) -> String {
     if first.len() == 0 {
         second.to_owned()
     } else {
-        format!("{}/{}", first, second)
+        let components = [first, second];
+        components.join("/")
     }
 }
 
