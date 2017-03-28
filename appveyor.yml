@@ -1,26 +1,23 @@
-# Set the build environment. AppVeyor currently defaults to Visual Studio 2015,
-# which is great because Cargo has some trouble with Visual Studio 2017 at the
-# moment. In any case, it's best to manually control this.
-image: Visual Studio 2015
-
 # Disable AppVeyor's default Visual Studio build system.
 build: false
 
-# Set Rust versions. We test with both the MSVC and GNU toolchains.
+# Set Rust versions.
+# NOTE: If we also add in the MSVC toolchains, we'll want to set the version of
+# Visual Studio that AppVeyor is using.
 environment:
   matrix:
     - channel: stable
-      toolchain: gnu
+      target: x86_64-pc-windows-gnu
     - channel: stable
-      toolchain: msvc
+      target: i686-pc-windows-gnu
     - channel: beta
-      toolchain: gnu
+      target: x86_64-pc-windows-gnu
     - channel: beta
-      toolchain: msvc
+      target: i686-pc-windows-gnu
     - channel: nightly
-      toolchain: gnu
+      target: x86_64-pc-windows-gnu
     - channel: nightly
-      toolchain: msvc
+      target: i686-pc-windows-gnu
 
 # Allow failure on nightly. We want to track behavior in these cases, but
 # stability is somewhat out of our hands. In the case of beta, we want to see
@@ -32,16 +29,13 @@ matrix:
 # Install Rust using rustup.
 install:
   - appveyor DownloadFile https://win.rustup.rs/ -FileName rustup-init.exe
-  - rustup-init -y --default-toolchain=%channel% --default-host=x86_64-pc-windows-%toolchain%
+  - rustup-init -y --default-toolchain=%channel% --default-host=%target%
   - set PATH=%PATH%;%USERPROFILE%\.cargo\bin
-  - rustup target add i686-pc-windows-%toolchain%
 
 # Run tests.
 test_script:
   - cargo build --verbose
   - cargo test --verbose
-  - cargo build --target=i686-pc-windows-%toolchain% --verbose
-  - cargo test --target=i686-pc-windows-%toolchain% --verbose
 
 # Send notifications.
 notifications:
