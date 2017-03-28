@@ -10,8 +10,7 @@ use super::conflict::{Conflict, Conflicts};
 use super::entry::Entry::{self, Directory};
 use super::path::join;
 
-// TODO: Can we lazily construct path values? E.g., could we use something like
-// a Vec<&str> (or some stack type) that only joins and allocates if needed?
+// TODO: We should document why we use the Option<&Entry> signature internally.
 
 fn diff<'a>(changes: &mut Changes,
             path: String,
