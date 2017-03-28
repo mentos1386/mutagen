@@ -29,6 +29,7 @@ pub mod errors {
 }
 pub mod hash;
 pub mod sync;
+pub mod path;
 pub mod prompt;
 pub mod process;
 pub mod proto;
