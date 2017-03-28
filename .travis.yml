@@ -1,0 +1,27 @@
+# Set the language.
+language: rust
+
+# Set test platforms.
+os:
+  - osx
+  - linux
+
+# Set Rust versions.
+rust:
+  - stable
+  - beta
+  - nightly
+
+# Allow failure on nightly. We want to track behavior in these cases, but
+# stability is somewhat out of our hands. In the case of beta, we want to see
+# these failures coming before they reach stable, so it's best to disallow them.
+matrix:
+  allow_failures:
+    - rust: nightly
+
+# The default Travis CI Rust test script is sufficient for our needs.
+
+# Send notifications.
+notifications:
+  email:
+    - jacob@havoc.io
