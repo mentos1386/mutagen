@@ -15,6 +15,8 @@ extern crate sha1;
 #[cfg(unix)]
 extern crate libc;
 #[cfg(windows)]
+extern crate kernel32;
+#[cfg(windows)]
 extern crate winapi;
 #[cfg(target_os = "macos")]
 extern crate unicode_normalization;

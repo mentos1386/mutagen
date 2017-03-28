@@ -11,7 +11,7 @@ use std::os::windows::process::CommandExt as StdCommandExt;
 use libc;
 
 #[cfg(windows)]
-use winapi::winbase::{CREATE_NEW_PROCESS_GROUP, DETACHED_PROCESS};
+use winapi::{CREATE_NEW_PROCESS_GROUP, DETACHED_PROCESS};
 
 /// Provides an extension to `std::process::Command` that allows for
 /// backgrounding child processes.

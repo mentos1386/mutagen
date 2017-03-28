@@ -52,6 +52,7 @@ serde_derive = "0.9.11"
 sha1 = "0.2.0"
 
 [target.'cfg(windows)'.dependencies]
+kernel32-sys = "0.2.2"
 winapi = "0.2.8"
 
 [target.'cfg(unix)'.dependencies]
