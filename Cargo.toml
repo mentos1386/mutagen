@@ -20,6 +20,9 @@ license = "MIT"
 travis-ci = { repository = "havoc-io/mutagen" }
 appveyor = { repository = "havoc-io/mutagen" }
 
+[profile.release]
+lto = true
+
 [[bin]]
 name = "mutagen"
 path = "src/bin/mutagen/main.rs"
@@ -42,6 +45,7 @@ doc = false
 bincode = "1.0.0-alpha5"
 blake2-rfc = "0.2.17"
 clap = "2.20.5"
+ctrlc = { version = "3.0.1", features = ["termination"] }
 error-chain = "0.10.0"
 fs2 = "0.4.1"
 glob = "0.2.11"
@@ -63,6 +67,3 @@ unicode-normalization = "0.1.4"
 
 [dev-dependencies]
 maplit = "0.1.4"
-
-[profile.release]
-lto = true

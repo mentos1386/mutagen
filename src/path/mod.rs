@@ -4,7 +4,7 @@
 mod tests;
 
 use std::env::home_dir;
-use std::fs::{create_dir, create_dir_all};
+use std::fs::create_dir_all;
 #[cfg(windows)]
 use std::io::{Error as IOError};
 #[cfg(windows)]
@@ -58,9 +58,9 @@ pub fn mutagen<P: AsRef<Path>>(subpath: P) -> Result<PathBuf> {
     // Compute the path to the Mutagen directory.
     let mutagen = home.as_path().join(MUTAGEN_DIRECTORY_NAME);
 
-    // Ensure the Mutagen directory exists. Since it's a direct descendant of
-    // the home directory (which should exist), we don't use create_dir_all.
-    create_dir(&mutagen).chain_err(|| "unable to create Mutagen directory")?;
+    // Ensure the Mutagen directory exists.
+    create_dir_all(&mutagen)
+        .chain_err(|| "unable to create Mutagen directory")?;
 
     // On Windows, ensure the Mutagen directory is hidden.
     #[cfg(windows)]

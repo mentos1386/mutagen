@@ -6,6 +6,7 @@ extern crate bincode;
 extern crate blake2_rfc;
 #[macro_use]
 extern crate error_chain;
+extern crate fs2;
 extern crate glob;
 extern crate ordered_iter;
 extern crate protobuf;
@@ -24,11 +25,13 @@ extern crate unicode_normalization;
 #[macro_use]
 extern crate maplit;
 
+// TODO: Review which of the following modules actually need to be public.
 pub mod errors {
     //! Provides error handling infrastructure for Mutagen via the error-chain
     //! crate.
     error_chain! { }
 }
+pub mod daemon;
 pub mod hash;
 pub mod sync;
 pub mod path;

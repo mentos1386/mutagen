@@ -1,5 +1,6 @@
 #[macro_use(crate_version)]
 extern crate clap;
+extern crate ctrlc;
 #[macro_use(bail)]
 extern crate error_chain;
 extern crate mutagen;
@@ -57,14 +58,14 @@ fn main() {
     // or no subcommand name, then either the argument parser didn't do its job
     // or we didn't handle all flags properly. In either case, it's a logic
     // error.
-    let result = match matches.subcommand_name() {
-        Some("create") => create::main(&matches),
-        Some("list") => list::main(&matches),
-        Some("pause") => pause::main(&matches),
-        Some("resume") => resume::main(&matches),
-        Some("terminate") => terminate::main(&matches),
-        Some("daemon") => daemon::main(&matches),
-        _ => panic!("invalid or unhandled subcommand dispatch"),
+    let result = match matches.subcommand() {
+        ("create", Some(submatches)) => create::main(submatches),
+        ("list", Some(submatches)) => list::main(submatches),
+        ("pause", Some(submatches)) => pause::main(submatches),
+        ("resume", Some(submatches)) => resume::main(submatches),
+        ("terminate", Some(submatches)) => terminate::main(submatches),
+        ("daemon", Some(submatches)) => daemon::main(submatches),
+        _ => panic!("invalid or mishandled subcommand dispatch"),
     };
 
     // Handle any subcommand error.

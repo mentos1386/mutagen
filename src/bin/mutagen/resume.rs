@@ -1,6 +1,6 @@
 use clap::{App, AppSettings, Arg, ArgMatches, SubCommand};
 
-use mutagen::errors::{Result, ResultExt};
+use mutagen::errors::Result;
 
 pub fn subcommand<'a, 'b>() -> App<'a, 'b> {
     SubCommand::with_name("resume")

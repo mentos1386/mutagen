@@ -1,10 +1,22 @@
 use std::env;
 use std::process::Command;
+use std::sync::{Arc, Mutex, Condvar};
 
 use clap::{App, AppSettings, Arg, ArgMatches, SubCommand};
 
+use ctrlc::set_handler as set_termination_handler;
+
+use mutagen::daemon::Lock;
 use mutagen::errors::{Result, ResultExt};
 use mutagen::process::CommandExt;
+
+#[derive(PartialEq)]
+enum TerminationStatus {
+    Unterminated,
+    TerminatedBySignal,
+    TerminatedByClient,
+    TerminatedByError,
+}
 
 pub fn subcommand<'a, 'b>() -> App<'a, 'b> {
     SubCommand::with_name("daemon")
@@ -48,12 +60,50 @@ pub fn main(arguments: &ArgMatches) -> Result<()> {
         return Ok(());
     }
 
-    // TODO: Acquire the daemon lock and ensure its release when we're done.
+    // Acquire the daemon lock. This lock will be released when dropped.
+    // HACK: Rust complains that this variable is unused, but this warning can
+    // be squelched by prefixing its name with an underscore. It's not clear if
+    // this is the idiomatic way of handling this for scoped locks taking
+    // advantage of RAII-style behavior.
+    let _lock = Lock::acquire().chain_err(|| "unable to acquire daemon lock")?;
 
-    // TODO: Start the IPC server.
+    // TODO: Create and start the server.
 
-    // TODO: Watch for termination from a signal, an internal error, or a client
-    // request.
-    println!("daemon {:?}", arguments);
-    bail!("daemon not implemented");
+    // Create a termination condition.
+    let termination = Arc::new((
+        Mutex::new(TerminationStatus::Unterminated),
+        Condvar::new()
+    ));
+
+    // Monitor for termination from signals.
+    // HACK: The ctrlc crate's Error type doesn't implement std::error::Error,
+    // so we can't chain it.
+    let signal_termination = termination.clone();
+    let handler_result = set_termination_handler(move || {
+        let &(ref lock, ref cvar) = &*signal_termination;
+        let mut terminated = lock.lock().unwrap();
+        if *terminated == TerminationStatus::Unterminated {
+            *terminated = TerminationStatus::TerminatedBySignal;
+        }
+        cvar.notify_one();
+    });
+    if !handler_result.is_ok() {
+        bail!("unable to set signal handler");
+    }
+
+    // TODO: Monitor for termination from the server, either due to an error or
+    // a client-initiated termination.
+
+    // Wait for termination.
+    let &(ref lock, ref cvar) = &*termination;
+    let mut terminated = lock.lock().unwrap();
+    while *terminated == TerminationStatus::Unterminated {
+        terminated = cvar.wait(terminated).unwrap();
+    }
+
+    // TODO: Initiate clean shutdown of the server. Maybe just have it implement
+    // drop.
+
+    // TODO: Handle the result based on termination reason.
+    Ok(())
 }
