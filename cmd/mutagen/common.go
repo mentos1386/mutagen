@@ -8,6 +8,17 @@ import (
 	"github.com/havoc-io/mutagen/ssh"
 )
 
+type ignorePatterns []string
+
+func (p *ignorePatterns) String() string {
+	return "ignore patterns"
+}
+
+func (p *ignorePatterns) Set(value string) error {
+	*p = append(*p, value)
+	return nil
+}
+
 func handlePromptRequests(stream rpc.ClientStream) error {
 	// Loop until there's an error or no more challenges.
 	for {

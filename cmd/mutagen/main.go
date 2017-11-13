@@ -20,6 +20,7 @@ var usage = `usage: mutagen [-V|--version] [-h|--help] [-l|--legal] <command> [<
 Supported commands include:
 
     create          Start a new synchronization session
+    edit            Starts an ephemeral synchronization/editing session
     list            List current synchronization sessions
     pause           Pause a synchronization session
     resume          Resume a synchronization session
@@ -32,6 +33,7 @@ To see help for a particular command, use 'mutagen <command> --help'.
 // handlers maps command names to their handlers.
 var handlers = map[string]func([]string) error{
 	"create":    createMain,
+	"edit":      editMain,
 	"list":      listMain,
 	"monitor":   monitorMain,
 	"pause":     pauseMain,
