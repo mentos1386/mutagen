@@ -23,7 +23,7 @@ func (c *ignoreTestCase) run(t *testing.T) {
 	}
 
 	// Create an ignorer.
-	ignorer, err := newIgnorer(c.ignores)
+	ignorer, err := newPathIgnorer(c.ignores)
 	if err != nil {
 		t.Fatal("unable to create ignorer:", err)
 	}
@@ -133,7 +133,7 @@ func TestInvalidPattern(t *testing.T) {
 }
 
 func TestInvalidPatternOnIgnorer(t *testing.T) {
-	if ignorer, err := newIgnorer([]string{"\\"}); err == nil {
+	if ignorer, err := newPathIgnorer([]string{"\\"}); err == nil {
 		t.Error("ignorer creation should fail on invalid pattern")
 	} else if ignorer != nil {
 		t.Error("ignorer should be nil on failed creation")

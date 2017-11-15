@@ -21,8 +21,8 @@ type localEndpoint struct {
 	watchCancel context.CancelFunc
 	// watchEvents is the filesystem monitoring channel. It is static.
 	watchEvents chan struct{}
-	// ignores is the list of ignored paths for the session. It is static.
-	ignores []string
+	// ignores is the ignore specification for the session. It is static.
+	ignores IgnoreSpecification
 	// cachePath is the path at which to save the cache for the session. It is
 	// static.
 	cachePath string
@@ -34,7 +34,7 @@ type localEndpoint struct {
 	stager *stager
 }
 
-func newLocalEndpoint(session string, version Version, root string, ignores []string, alpha bool) (endpoint, error) {
+func newLocalEndpoint(session string, version Version, root string, ignores IgnoreSpecification, alpha bool) (endpoint, error) {
 	// Validate endpoint parameters.
 	if session == "" {
 		return nil, errors.New("empty session identifier")
@@ -105,7 +105,7 @@ func (e *localEndpoint) poll(context context.Context) error {
 func (e *localEndpoint) scan(ancestor *sync.Entry) (*sync.Entry, bool, error) {
 	// Perform the scan. If there's an error, we have to assume it's a
 	// concurrent modification and just suggest a retry.
-	result, newCache, err := sync.Scan(e.root, e.scanHasher, e.cache, e.ignores)
+	result, newCache, err := sync.Scan(e.root, e.scanHasher, e.cache, e.ignores.Paths, e.ignores.Size)
 	if err != nil {
 		return nil, true, nil
 	}

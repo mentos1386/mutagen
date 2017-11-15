@@ -9,7 +9,7 @@ type initializeRequest struct {
 	Session string
 	Version Version
 	Root    string
-	Ignores []string
+	Ignores IgnoreSpecification
 	Alpha   bool
 }
 

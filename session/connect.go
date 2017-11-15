@@ -13,7 +13,7 @@ func connect(
 	session string,
 	version Version,
 	url *urlpkg.URL,
-	ignores []string,
+	ignores IgnoreSpecification,
 	alpha bool,
 	prompter string,
 ) (endpoint, error) {
@@ -60,7 +60,7 @@ func reconnect(ctx context.Context,
 	session string,
 	version Version,
 	url *urlpkg.URL,
-	ignores []string,
+	ignores IgnoreSpecification,
 	alpha bool,
 ) (endpoint, error) {
 	// Create a channel to deliver the connection result.

@@ -33,7 +33,7 @@ func newRemoteEndpoint(
 	session string,
 	version Version,
 	root string,
-	ignores []string,
+	ignores IgnoreSpecification,
 	alpha bool,
 ) (endpoint, error) {
 	// Create encoders and decoders.

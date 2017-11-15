@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"strconv"
 
 	"github.com/pkg/errors"
 
@@ -14,7 +15,7 @@ import (
 )
 
 var createUsage = `usage: mutagen create [-h|--help] [-i|--ignore=<pattern>]
-                      <alpha> <beta>
+                      [--ignore-size=<size>] <alpha> <beta>
 
 Creates and starts a new synchronization session.
 `
@@ -33,9 +34,31 @@ func (p *ignorePatterns) Set(value string) error {
 func createMain(arguments []string) error {
 	// Parse command line arguments.
 	var ignores ignorePatterns
+	var ignoreSizeString string
+	var ignoreSize uint64
 	flagSet := cmd.NewFlagSet("create", createUsage, []int{2})
 	flagSet.VarP(&ignores, "ignore", "i", "specify ignore paths")
+	flagSet.StringVar(&ignoreSizeString, "ignore-size", "", "ignore files above a certain size")
 	urls := flagSet.ParseOrDie(arguments)
+	if length := len(ignoreSizeString); length > 0 {
+		multiplier := uint64(1)
+		lastByte := ignoreSizeString[length-1]
+		if lastByte == 'K' {
+			multiplier = 1024
+			ignoreSizeString = ignoreSizeString[:length-1]
+		} else if lastByte == 'M' {
+			multiplier = 1024 * 1024
+			ignoreSizeString = ignoreSizeString[:length-1]
+		} else if lastByte == 'G' {
+			multiplier = 1024 * 1024 * 1024
+			ignoreSizeString = ignoreSizeString[:length-1]
+		}
+		if parsed, err := strconv.ParseUint(ignoreSizeString, 10, 64); err != nil {
+			return errors.Wrap(err, "unable to parse ignore size")
+		} else {
+			ignoreSize = parsed * multiplier
+		}
+	}
 
 	// Extract and parse URLs.
 	alpha, err := url.Parse(urls[0])
@@ -76,9 +99,12 @@ func createMain(arguments []string) error {
 
 	// Send the initial request.
 	request := sessionpkg.CreateRequest{
-		Alpha:   alpha,
-		Beta:    beta,
-		Ignores: []string(ignores),
+		Alpha: alpha,
+		Beta:  beta,
+		Ignores: sessionpkg.IgnoreSpecification{
+			Paths: []string(ignores),
+			Size:  ignoreSize,
+		},
 	}
 	if err := stream.Send(request); err != nil {
 		return errors.Wrap(err, "unable to send creation request")

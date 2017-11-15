@@ -57,14 +57,14 @@ type controller struct {
 func newSession(
 	tracker *state.Tracker,
 	alpha, beta *url.URL,
-	ignores []string,
+	ignores IgnoreSpecification,
 	prompter string,
 ) (*controller, error) {
 	// TODO: Should we perform URL validation in here? They should be validated
 	// by the respective dialers.
 
 	// Verify that the ignores are valid.
-	for _, ignore := range ignores {
+	for _, ignore := range ignores.Paths {
 		if !sync.ValidIgnorePattern(ignore) {
 			return nil, errors.Errorf("invalid ignore specified: %s", ignore)
 		}
@@ -97,7 +97,8 @@ func newSession(
 		CreatingVersionPatch: mutagen.VersionPatch,
 		Alpha:                alpha,
 		Beta:                 beta,
-		Ignores:              ignores,
+		Ignores:              ignores.Paths,
+		IgnoreSize:           ignores.Size,
 	}
 	archive := &Archive{}
 
@@ -259,7 +260,7 @@ func (c *controller) resume(prompter string) error {
 		c.session.Identifier,
 		c.session.Version,
 		c.session.Alpha,
-		c.session.Ignores,
+		IgnoreSpecification{Paths: c.session.Ignores, Size: c.session.IgnoreSize},
 		true,
 		prompter,
 	)
@@ -267,7 +268,7 @@ func (c *controller) resume(prompter string) error {
 		c.session.Identifier,
 		c.session.Version,
 		c.session.Beta,
-		c.session.Ignores,
+		IgnoreSpecification{Paths: c.session.Ignores, Size: c.session.IgnoreSize},
 		false,
 		prompter,
 	)
@@ -395,7 +396,7 @@ func (c *controller) run(context contextpkg.Context, alpha, beta endpoint) {
 					c.session.Identifier,
 					c.session.Version,
 					c.session.Alpha,
-					c.session.Ignores,
+					IgnoreSpecification{Paths: c.session.Ignores, Size: c.session.IgnoreSize},
 					true,
 				)
 			}
@@ -422,7 +423,7 @@ func (c *controller) run(context contextpkg.Context, alpha, beta endpoint) {
 					c.session.Identifier,
 					c.session.Version,
 					c.session.Beta,
-					c.session.Ignores,
+					IgnoreSpecification{Paths: c.session.Ignores, Size: c.session.IgnoreSize},
 					false,
 				)
 			}

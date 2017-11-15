@@ -51,11 +51,11 @@ func ValidIgnorePattern(pattern string) bool {
 	return err == nil
 }
 
-type ignorer struct {
+type pathIgnorer struct {
 	patterns []*ignorePattern
 }
 
-func newIgnorer(patterns []string) (*ignorer, error) {
+func newPathIgnorer(patterns []string) (*pathIgnorer, error) {
 	// Parse patterns.
 	ignorePatterns := make([]*ignorePattern, len(patterns))
 	for i, p := range patterns {
@@ -67,10 +67,10 @@ func newIgnorer(patterns []string) (*ignorer, error) {
 	}
 
 	// Success.
-	return &ignorer{ignorePatterns}, nil
+	return &pathIgnorer{ignorePatterns}, nil
 }
 
-func (i *ignorer) ignored(path string) bool {
+func (i *pathIgnorer) ignored(path string) bool {
 	// Nothing is initially ignored.
 	ignored := false
 

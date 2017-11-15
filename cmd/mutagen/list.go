@@ -29,6 +29,24 @@ func printSession(state sessionpkg.SessionState) {
 	}
 	fmt.Println("Status:", statusString)
 
+	// Printed ignore paths, if any.
+	if len(state.Session.Ignores) > 0 {
+		fmt.Println("Ignored paths:")
+		for _, p := range state.Session.Ignores {
+			fmt.Printf("\t%s\n", p)
+		}
+	}
+
+	// Print ignored file size, if non-0.
+	// TODO: Can we use friendlier units here by looping while size % 1024 == 0?
+	if state.Session.IgnoreSize > 0 {
+		fmt.Println(
+			"Ignoring files with size above",
+			state.Session.IgnoreSize,
+			"bytes",
+		)
+	}
+
 	// Print the last error, if any.
 	if state.State.LastError != "" {
 		fmt.Println("Last error:", state.State.LastError)
@@ -72,7 +90,11 @@ func printEndpoint(state sessionpkg.SessionState, alpha bool) {
 	if len(problems) > 0 {
 		fmt.Println("\tProblems:")
 		for _, p := range problems {
-			fmt.Printf("\t\t%s: %v\n", p.Path, p.Error)
+			path := p.Path
+			if path == "" {
+				path = "<root>"
+			}
+			fmt.Printf("\t\t%s: %v\n", path, p.Error)
 		}
 	}
 }

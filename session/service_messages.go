@@ -17,7 +17,7 @@ type PromptResponse struct {
 type CreateRequest struct {
 	Alpha   *url.URL
 	Beta    *url.URL
-	Ignores []string
+	Ignores IgnoreSpecification
 }
 
 type CreateResponse struct {

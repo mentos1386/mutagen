@@ -28,12 +28,13 @@ const (
 )
 
 type scanner struct {
-	root     string
-	hasher   hash.Hash
-	cache    *Cache
-	ignorer  *ignorer
-	newCache *Cache
-	buffer   []byte
+	root        string
+	hasher      hash.Hash
+	cache       *Cache
+	pathIgnorer *pathIgnorer
+	ignoreSize  uint64
+	newCache    *Cache
+	buffer      []byte
 }
 
 func (s *scanner) file(path string, info os.FileInfo) (*Entry, error) {
@@ -126,7 +127,7 @@ func (s *scanner) directory(path string) (*Entry, error) {
 		contentPath := pathpkg.Join(path, name)
 
 		// If this path is ignored, then skip it.
-		if s.ignorer.ignored(contentPath) {
+		if s.pathIgnorer.ignored(contentPath) {
 			continue
 		}
 
@@ -148,6 +149,13 @@ func (s *scanner) directory(path string) (*Entry, error) {
 			kind = EntryKind_Symlink
 		} else if mode&os.ModeType != 0 {
 			continue
+		}
+
+		// If this entry is a file and ignored due to its size, then skip it.
+		if s.ignoreSize > 0 {
+			if kind == EntryKind_File && uint64(info.Size()) >= s.ignoreSize {
+				continue
+			}
 		}
 
 		// Handle based on kind.
@@ -182,14 +190,14 @@ func (s *scanner) directory(path string) (*Entry, error) {
 	}, nil
 }
 
-func Scan(root string, hasher hash.Hash, cache *Cache, ignores []string) (*Entry, *Cache, error) {
+func Scan(root string, hasher hash.Hash, cache *Cache, ignores []string, ignoreSize uint64) (*Entry, *Cache, error) {
 	// If the cache is nil, create an empty one.
 	if cache == nil {
 		cache = &Cache{}
 	}
 
 	// Create the ignorer.
-	ignorer, err := newIgnorer(ignores)
+	pathIgnorer, err := newPathIgnorer(ignores)
 	if err != nil {
 		return nil, nil, errors.Wrap(err, "unable to create ignorer")
 	}
@@ -205,12 +213,13 @@ func Scan(root string, hasher hash.Hash, cache *Cache, ignores []string) (*Entry
 
 	// Create a scanner.
 	s := &scanner{
-		root:     root,
-		hasher:   hasher,
-		cache:    cache,
-		ignorer:  ignorer,
-		newCache: newCache,
-		buffer:   make([]byte, scannerCopyBufferSize),
+		root:        root,
+		hasher:      hasher,
+		cache:       cache,
+		pathIgnorer: pathIgnorer,
+		ignoreSize:  ignoreSize,
+		newCache:    newCache,
+		buffer:      make([]byte, scannerCopyBufferSize),
 	}
 
 	// Create the snapshot. We use os.Stat, as opposed to os.Lstat, because we
