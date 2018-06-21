@@ -40,7 +40,7 @@ script:
   - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then source scripts/create_test_partitions_darwin.sh ; fi
   - go test -v -race -coverprofile=coverage.txt ./pkg/...
   - GOARCH=386 go test -v ./pkg/...
-  - bash <(curl -s https://codecov.io/bash)
+  - bash <(curl -s https://codecov.io/bash) -X fix
   - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then go run scripts/build.go --mode=release ; fi
   - if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then go run scripts/build.go --mode=testing ; fi
 

@@ -31,7 +31,7 @@ before_test:
 test_script:
   - go version
   - go test -v -race -coverprofile=coverage.txt ./pkg/...
-  - codecov -X gcov -f coverage.txt
+  - codecov -X gcov -X fix -f coverage.txt
   - go run scripts/build.go --mode=testing
 
 # Send notifications.
