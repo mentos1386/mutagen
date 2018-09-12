@@ -92,3 +92,14 @@ func TestFormatSSHUsernameHostnamePortPath(t *testing.T) {
 	}
 	test.run(t)
 }
+
+func TestFormatCustom(t *testing.T) {
+	test := &formatTestCase{
+		url: &URL{
+			Protocol: Protocol_Custom,
+			Path:     "custom://example.org/some/path",
+		},
+		expected: "custom://example.org/some/path",
+	}
+	test.run(t)
+}

@@ -10,6 +10,8 @@ func (u *URL) Format() string {
 		return u.formatLocal()
 	} else if u.Protocol == Protocol_SSH {
 		return u.formatSSH()
+	} else if u.Protocol == Protocol_Custom {
+		return u.formatCustom()
 	}
 	panic("unknown URL protocol")
 }
@@ -39,4 +41,10 @@ func (u *URL) formatSSH() string {
 
 	// Done.
 	return result
+}
+
+// formatCustom formats a custom URL. We treat custom URLs as opaque and simply
+// return their value.
+func (u *URL) formatCustom() string {
+	return u.Path
 }

@@ -362,3 +362,22 @@ func TestParseUnicodeUsernameHostnamePortPath(t *testing.T) {
 	}
 	test.run(t)
 }
+
+func TestParseCustomInvalidScheme(t *testing.T) {
+	test := parseTestCase{
+		raw:  "5http://example.org/",
+		fail: true,
+	}
+	test.run(t)
+}
+
+func TestParseCustom(t *testing.T) {
+	test := parseTestCase{
+		raw: "htt-...+p://example.org/",
+		expected: &URL{
+			Protocol: Protocol_Custom,
+			Path:     "htt-...+p://example.org/",
+		},
+	}
+	test.run(t)
+}

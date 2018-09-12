@@ -265,9 +265,8 @@ func connect(
 	// TODO: If we do start seeing large allocations in these buffers, a simple
 	// size-limited buffer might suffice, at least to get some of the error
 	// message.
-	// TODO: Since this problem will likely be shared with custom protocols
-	// (which will invoke transport executables), it would be good to implement
-	// a shared solution.
+	// TODO: Since this problem is shared with the custom protocol package, it
+	// would be good to implement a shared solution.
 	errorBuffer := bytes.NewBuffer(nil)
 	agentProcess.Stderr = errorBuffer
 

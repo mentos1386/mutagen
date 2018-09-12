@@ -86,3 +86,85 @@ func TestURLEnsureValidSSH(t *testing.T) {
 		t.Error("valid URL classified as invalid")
 	}
 }
+
+func TestURLEnsureValidCustomUsernameInvalid(t *testing.T) {
+	invalid := &URL{
+		Protocol: Protocol_Custom,
+		Username: "george",
+		Path:     "custom://example.org/some/path",
+	}
+	if invalid.EnsureValid() == nil {
+		t.Error("invalid URL classified as valid")
+	}
+}
+
+func TestURLEnsureValidCustomHostnameInvalid(t *testing.T) {
+	invalid := &URL{
+		Protocol: Protocol_Custom,
+		Hostname: "somehost",
+		Path:     "custom://example.org/some/path",
+	}
+	if invalid.EnsureValid() == nil {
+		t.Error("invalid URL classified as valid")
+	}
+}
+
+func TestURLEnsureValidCustomPortInvalid(t *testing.T) {
+	invalid := &URL{
+		Protocol: Protocol_Custom,
+		Port:     22,
+		Path:     "custom://example.org/some/path",
+	}
+	if invalid.EnsureValid() == nil {
+		t.Error("invalid URL classified as valid")
+	}
+}
+
+func TestURLEnsureValidCustomEmptyURLInvalid(t *testing.T) {
+	invalid := &URL{
+		Protocol: Protocol_Custom,
+	}
+	if invalid.EnsureValid() == nil {
+		t.Error("invalid URL classified as valid")
+	}
+}
+
+func TestURLEnsureValidCustomEmptySchemeURLInvalid(t *testing.T) {
+	invalid := &URL{
+		Protocol: Protocol_Custom,
+		Path:     "://example.org/some/path",
+	}
+	if invalid.EnsureValid() == nil {
+		t.Error("invalid URL classified as valid")
+	}
+}
+
+func TestURLEnsureValidCustomInvalidSchemeURLInvalid(t *testing.T) {
+	invalid := &URL{
+		Protocol: Protocol_Custom,
+		Path:     "5://example.org/some/path",
+	}
+	if invalid.EnsureValid() == nil {
+		t.Error("invalid URL classified as valid")
+	}
+}
+
+func TestURLEnsureValidCustomSchemelessURLInvalid(t *testing.T) {
+	invalid := &URL{
+		Protocol: Protocol_Custom,
+		Path:     "/some/path",
+	}
+	if invalid.EnsureValid() == nil {
+		t.Error("invalid URL classified as valid")
+	}
+}
+
+func TestURLEnsureValidCustom(t *testing.T) {
+	valid := &URL{
+		Protocol: Protocol_Custom,
+		Path:     "custom://example.org/some/path",
+	}
+	if err := valid.EnsureValid(); err != nil {
+		t.Error("valid URL classified as invalid")
+	}
+}
