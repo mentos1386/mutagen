@@ -56,8 +56,8 @@ func ParseCustomScheme(raw string) (string, error) {
 
 
 func isCustomURL(raw string) bool {
-	_, err := ParseCustomScheme(raw)
-	return err != nil
+	scheme, err := ParseCustomScheme(raw)
+	return err == nil && scheme != ""
 }
 
 func parseCustom(raw string) (*URL, error) {

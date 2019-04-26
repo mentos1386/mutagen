@@ -1,0 +1,15 @@
+#!/bin/bash
+set -eo pipefail
+
+
+POD_ID=dev-sync-7fd4c47b7b-gdthd
+
+DESTINATION=$1
+
+# kubectl cp --no-preserve /Users/tinejozelj/Projects/mutagen/build/mutagen-agents.tar.gz $POD_ID:/tmp/mutagen-agents.tar.gz
+# kubectl exec $POD_ID -- sh -c "tar -xzf /tmp/mutagen-agents.tar.gz"
+
+kubectl cp --no-preserve /Users/tinejozelj/Projects/mutagen/build/agent/linux_amd64 $POD_ID:/tmp/
+
+kubectl exec $POD_ID -i -- /tmp/linux_amd64 endpoint
+

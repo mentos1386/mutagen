@@ -116,7 +116,7 @@ func (h *protocolHandler) Dial(
 	// NewEndpointClient method will close the connection (hence terminating the
 	// process) on failure), and see if we can return a more detailed error
 	// message about its failure.
-	client, err := remote.NewEndpointClient(connection, "", session, version, configuration, alpha)
+	client, err := remote.NewEndpointClient(connection, "/mnt/app", session, version, configuration, alpha)
 	if remote.IsHandshakeTransportError(err) {
 		// On error, NewEndpointClient will close the connection, but doing so
 		// won't wait for the underlying process to terminate, so we need to do
@@ -137,6 +137,10 @@ func (h *protocolHandler) Dial(
 	} else if err != nil {
 		return nil, errors.Wrap(err, "unable to create endpoint client")
 	}
+
+	// Now that we've successfully connected, disable the kill delay on the
+	// process connection.
+	connection.SetKillDelay(time.Duration(0))
 
 	// Success.
 	return client, nil

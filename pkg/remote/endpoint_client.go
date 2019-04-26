@@ -118,7 +118,7 @@ func NewEndpointClient(
 		return nil, errors.Wrap(err, "invalid initialize response")
 	} else if response.Error != "" {
 		connection.Close()
-		return nil, errors.Errorf("remote error: %s", response.Error)
+		return nil, errors.Errorf("remote error: %s %v", response.Error, request)
 	}
 
 	// Success.
