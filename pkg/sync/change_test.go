@@ -4,27 +4,42 @@ import (
 	"testing"
 )
 
+func TestChangeCopySlim(t *testing.T) {
+	// Create a sample change.
+	change := &Change{
+		Path: "test",
+		Old:  nil,
+		New:  testDirectory2Entry,
+	}
+
+	// Create a slim copy.
+	slim := change.copySlim()
+
+	// Check validity.
+	if err := slim.EnsureValid(); err != nil {
+		t.Fatal("slim copy of change is invalid:", err)
+	}
+
+	// Check path.
+	if slim.Path != "test" {
+		t.Error("slim copy of change has differing path")
+	}
+
+	// Check old entry.
+	if !slim.Old.Equal(nil) {
+		t.Error("slim copy of change has incorrect old entry")
+	}
+
+	// Check new entry.
+	if !slim.New.Equal(testEmptyDirectory) {
+		t.Error("slim copy of change has incorrect new entry")
+	}
+}
+
 func TestChangeNilInvalid(t *testing.T) {
 	var change *Change
 	if change.EnsureValid() == nil {
 		t.Error("nil change considered valid")
-	}
-}
-
-func TestChangeBothNilInvalid(t *testing.T) {
-	change := &Change{}
-	if change.EnsureValid() == nil {
-		t.Error("change with both entries nil considered valid")
-	}
-}
-
-func TestChangeBothSameInvalid(t *testing.T) {
-	change := &Change{
-		Old: testFile1Entry,
-		New: testFile1Entry,
-	}
-	if change.EnsureValid() == nil {
-		t.Error("change with duplicate considered valid")
 	}
 }
 

@@ -9,9 +9,10 @@ import (
 	"github.com/havoc-io/mutagen/pkg/prompt"
 
 	// Explicitly import packages that need to register protocol handlers.
-	_ "github.com/havoc-io/mutagen/pkg/custom"
-	_ "github.com/havoc-io/mutagen/pkg/local"
-	_ "github.com/havoc-io/mutagen/pkg/ssh"
+	_ "github.com/havoc-io/mutagen/pkg/protocols/docker"
+	_ "github.com/havoc-io/mutagen/pkg/protocols/custom"
+	_ "github.com/havoc-io/mutagen/pkg/protocols/local"
+	_ "github.com/havoc-io/mutagen/pkg/protocols/ssh"
 )
 
 func rootMain(command *cobra.Command, arguments []string) error {
@@ -32,13 +33,17 @@ var rootCommand = &cobra.Command{
 }
 
 var rootConfiguration struct {
+	// help indicates whether or not help information should be shown for the
+	// command.
 	help bool
 }
 
 func init() {
-	// Bind flags to configuration. We manually add help to override the default
-	// message, but Cobra still implements it automatically.
+	// Grab a handle for the command line flags.
 	flags := rootCommand.Flags()
+
+	// Manually add a help flag to override the default message. Cobra will
+	// still implement its logic automatically.
 	flags.BoolVarP(&rootConfiguration.help, "help", "h", false, "Show help information")
 
 	// Disable Cobra's command sorting behavior. By default, it sorts commands
@@ -56,6 +61,7 @@ func init() {
 		createCommand,
 		listCommand,
 		monitorCommand,
+		flushCommand,
 		pauseCommand,
 		resumeCommand,
 		terminateCommand,

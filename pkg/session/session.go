@@ -30,6 +30,17 @@ func (v Version) Hasher() hash.Hash {
 	}
 }
 
+// DefaultSynchronizationMode returns the default synchronization mode for the
+// session version.
+func (v Version) DefaultSynchronizationMode() sync.SynchronizationMode {
+	switch v {
+	case Version_Version1:
+		return sync.SynchronizationMode_SynchronizationModeTwoWaySafe
+	default:
+		panic("unknown or unsupported session version")
+	}
+}
+
 // DefaultSymlinkMode returns the default symlink mode for the session version.
 func (v Version) DefaultSymlinkMode() sync.SymlinkMode {
 	switch v {
@@ -44,7 +55,18 @@ func (v Version) DefaultSymlinkMode() sync.SymlinkMode {
 func (v Version) DefaultWatchMode() filesystem.WatchMode {
 	switch v {
 	case Version_Version1:
-		return filesystem.WatchMode_WatchPortable
+		return filesystem.WatchMode_WatchModePortable
+	default:
+		panic("unknown or unsupported session version")
+	}
+}
+
+// DefaultWatchPollingInterval returns the default watch polling interval for
+// the session version.
+func (v Version) DefaultWatchPollingInterval() uint32 {
+	switch v {
+	case Version_Version1:
+		return 10
 	default:
 		panic("unknown or unsupported session version")
 	}
@@ -56,6 +78,53 @@ func (v Version) DefaultIgnoreVCSMode() sync.IgnoreVCSMode {
 	switch v {
 	case Version_Version1:
 		return sync.IgnoreVCSMode_PropagateVCS
+	default:
+		panic("unknown or unsupported session version")
+	}
+}
+
+// DefaultFileMode returns the default file permission mode for the session
+// version.
+func (v Version) DefaultFileMode() filesystem.Mode {
+	switch v {
+	case Version_Version1:
+		return filesystem.ModePermissionUserRead |
+			filesystem.ModePermissionUserWrite
+	default:
+		panic("unknown or unsupported session version")
+	}
+}
+
+// DefaultDirectoryMode returns the default directory permission mode for the
+// session version.
+func (v Version) DefaultDirectoryMode() filesystem.Mode {
+	switch v {
+	case Version_Version1:
+		return filesystem.ModePermissionUserRead |
+			filesystem.ModePermissionUserWrite |
+			filesystem.ModePermissionUserExecute
+	default:
+		panic("unknown or unsupported session version")
+	}
+}
+
+// DefaultOwnerSpecification returns the default owner specification for the
+// session version.
+func (v Version) DefaultOwnerSpecification() string {
+	switch v {
+	case Version_Version1:
+		return ""
+	default:
+		panic("unknown or unsupported session version")
+	}
+}
+
+// DefaultGroupSpecification returns the default owner group specification for
+// the session version.
+func (v Version) DefaultGroupSpecification() string {
+	switch v {
+	case Version_Version1:
+		return ""
 	default:
 		panic("unknown or unsupported session version")
 	}
@@ -95,8 +164,18 @@ func (s *Session) EnsureValid() error {
 	}
 
 	// Ensure that the configuration is valid.
-	if err := s.Configuration.EnsureValid(ConfigurationSourceSession); err != nil {
+	if err := s.Configuration.EnsureValid(ConfigurationSourceTypeSession); err != nil {
 		return errors.Wrap(err, "invalid configuration")
+	}
+
+	// Ensure that the alpha-specific configuration is valid.
+	if err := s.ConfigurationAlpha.EnsureValid(ConfigurationSourceTypeSessionEndpointSpecific); err != nil {
+		return errors.Wrap(err, "invalid alpha-specific configuration")
+	}
+
+	// Ensure that the beta-specific configuration is valid.
+	if err := s.ConfigurationBeta.EnsureValid(ConfigurationSourceTypeSessionEndpointSpecific); err != nil {
+		return errors.Wrap(err, "invalid beta-specific configuration")
 	}
 
 	// Success.

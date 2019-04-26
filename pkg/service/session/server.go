@@ -41,12 +41,8 @@ func (s *Server) Create(stream Sessions_CreateServer) error {
 	request, err := stream.Recv()
 	if err != nil {
 		return errors.Wrap(err, "unable to receive request")
-	} else if err = request.Alpha.EnsureValid(); err != nil {
-		return errors.Wrap(err, "alpha URL invalid")
-	} else if err = request.Beta.EnsureValid(); err != nil {
-		return errors.Wrap(err, "beta URL invalid")
-	} else if err = request.Configuration.EnsureValid(session.ConfigurationSourceCreate); err != nil {
-		return errors.Wrap(err, "session configuration invalid")
+	} else if err = request.ensureValid(true); err != nil {
+		return errors.Wrap(err, "received invalid create request")
 	}
 
 	// Wrap the stream in a prompter and register it with the prompt server.
@@ -61,6 +57,8 @@ func (s *Server) Create(stream Sessions_CreateServer) error {
 		request.Alpha,
 		request.Beta,
 		request.Configuration,
+		request.ConfigurationAlpha,
+		request.ConfigurationBeta,
 		prompter,
 	)
 
@@ -83,6 +81,11 @@ func (s *Server) Create(stream Sessions_CreateServer) error {
 
 // List lists existing sessions.
 func (s *Server) List(_ context.Context, request *ListRequest) (*ListResponse, error) {
+	// Validate the request.
+	if err := request.ensureValid(); err != nil {
+		return nil, errors.Wrap(err, "received invalid list request")
+	}
+
 	// Perform listing.
 	// TODO: Figure out a way to monitor for cancellation.
 	stateIndex, states, err := s.manager.List(request.PreviousStateIndex, request.Specifications)
@@ -97,12 +100,50 @@ func (s *Server) List(_ context.Context, request *ListRequest) (*ListResponse, e
 	}, nil
 }
 
+// Flush flushes existing sessions.
+func (s *Server) Flush(stream Sessions_FlushServer) error {
+	// Receive the first request.
+	request, err := stream.Recv()
+	if err != nil {
+		return errors.Wrap(err, "unable to receive request")
+	} else if err = request.ensureValid(true); err != nil {
+		return errors.Wrap(err, "received invalid flush request")
+	}
+
+	// Wrap the stream in a prompter and register it with the prompt server.
+	prompter, err := prompt.RegisterPrompter(&flushStreamPrompter{stream})
+	if err != nil {
+		return errors.Wrap(err, "unable to register prompter")
+	}
+
+	// Perform flush.
+	err = s.manager.Flush(request.Specifications, prompter, request.SkipWait, stream.Context())
+
+	// Unregister the prompter.
+	prompt.UnregisterPrompter(prompter)
+
+	// Handle any errors.
+	if err != nil {
+		return err
+	}
+
+	// Signal completion.
+	if err := stream.Send(&FlushResponse{}); err != nil {
+		return errors.Wrap(err, "unable to send response")
+	}
+
+	// Success.
+	return nil
+}
+
 // Pause pauses existing sessions.
 func (s *Server) Pause(stream Sessions_PauseServer) error {
 	// Receive the first request.
 	request, err := stream.Recv()
 	if err != nil {
 		return errors.Wrap(err, "unable to receive request")
+	} else if err = request.ensureValid(true); err != nil {
+		return errors.Wrap(err, "received invalid pause request")
 	}
 
 	// Wrap the stream in a prompter and register it with the prompt server.
@@ -138,6 +179,8 @@ func (s *Server) Resume(stream Sessions_ResumeServer) error {
 	request, err := stream.Recv()
 	if err != nil {
 		return errors.Wrap(err, "unable to receive request")
+	} else if err = request.ensureValid(true); err != nil {
+		return errors.Wrap(err, "received invalid resume request")
 	}
 
 	// Wrap the stream in a prompter and register it with the prompt server.
@@ -173,6 +216,8 @@ func (s *Server) Terminate(stream Sessions_TerminateServer) error {
 	request, err := stream.Recv()
 	if err != nil {
 		return errors.Wrap(err, "unable to receive request")
+	} else if err = request.ensureValid(true); err != nil {
+		return errors.Wrap(err, "received invalid terminate request")
 	}
 
 	// Wrap the stream in a prompter and register it with the prompt server.

@@ -30,7 +30,7 @@ func Housekeep() {
 	}
 
 	// Get the list of locally installed agent versions. If we fail, just abort.
-	agentDirectoryContents, err := filesystem.DirectoryContents(agentsDirectoryPath)
+	agentDirectoryContents, err := filesystem.DirectoryContentsByPath(agentsDirectoryPath)
 	if err != nil {
 		return
 	}
@@ -45,7 +45,8 @@ func Housekeep() {
 	// and remove it if longer than the maximum allowed period. Skip contents
 	// where failures are encountered.
 	for _, c := range agentDirectoryContents {
-		// TODO: Ensure that the name matches the expected format.
+		// TODO: Ensure that the name matches the expected format. Be mindful of
+		// the fact that it might contain a tag.
 		agentVersion := c.Name()
 		if stat, err := extstat.NewFromFileName(filepath.Join(agentsDirectoryPath, agentVersion, agentName)); err != nil {
 			continue

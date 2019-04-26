@@ -2,6 +2,7 @@ package sync
 
 import (
 	"bytes"
+	"strings"
 
 	"github.com/pkg/errors"
 )
@@ -29,6 +30,8 @@ func (e *Entry) EnsureValid() error {
 		for name, entry := range e.Contents {
 			if name == "" {
 				return errors.New("empty content name detected")
+			} else if strings.IndexByte(name, '/') != -1 {
+				return errors.New("content name contains path separator")
 			} else if entry == nil {
 				return errors.New("nil content detected")
 			} else if err := entry.EnsureValid(); err != nil {
@@ -70,6 +73,34 @@ func (e *Entry) EnsureValid() error {
 
 	// Success.
 	return nil
+}
+
+// Count returns the total number of entries within the entry hierarchy rooted
+// at the entry.
+func (e *Entry) Count() uint64 {
+	// If we're a nil entry, then the hierarchy is empty.
+	if e == nil {
+		return 0
+	}
+
+	// Count ourselves.
+	result := uint64(1)
+
+	// If we're a directory, count our children.
+	if e.Kind == EntryKind_Directory {
+		for _, entry := range e.Contents {
+			// TODO: At the moment, we don't worry about overflow here. The
+			// reason is that, in order to overflow uint64, we'd need a minimum
+			// of 2**64 entries in the hierarchy. Even assuming that each entry
+			// consumed only one byte of memory (and they consume at least an
+			// order of magnitude more than that), we'd have to be on a system
+			// with (at least) ~18.5 exabytes of memory.
+			result += entry.Count()
+		}
+	}
+
+	// Done.
+	return result
 }
 
 // equalShallow returns true if and only if the existence, kind, executability,
@@ -121,9 +152,10 @@ func (e *Entry) Equal(other *Entry) bool {
 	return true
 }
 
-// CopyShallow creates a shallow copy of the entry (excluding directory
-// contents, if any).
-func (e *Entry) CopyShallow() *Entry {
+// copySlim creates a "slim" copy of the entry. For files and symbolic links,
+// this yields an equivalent entry. For directories, it yields an equivalent
+// entry but without any contents.
+func (e *Entry) copySlim() *Entry {
 	// If the entry is nil, the copy is nil.
 	if e == nil {
 		return nil

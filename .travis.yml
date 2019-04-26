@@ -1,25 +1,39 @@
 # Set the language.
 language: go
 
-# Set up the build matrix. The Travis macOS builders are really slow when
-# performing integration tests (I suspect due to the underlying hardware), and
-# they often go more than 10 minutes without any output while copying files
-# (which Travis treats as failure), so we disable end-to-end integration tests
-# on macOS builders. Even if Travis were to allow long periods without output,
-# the macOS builders still have to do a full release build after testing, which
-# takes a long time by itself, and it makes waiting for test and build results
-# painful. We still get full integration test coverage on Linux and Windows, and
-# all internals are tested on macOS, so this isn't a huge loss to coverage.
+# Set up the build matrix.
 matrix:
   include:
     - os: osx
       osx_image: xcode9.4
-      env: GO111MODULE=on
+      env:
+        - GO111MODULE=on
+        - MUTAGEN_TEST_END_TO_END=full
+        - MUTAGEN_TEST_SSH=true
     - os: linux
-      env: MUTAGEN_TEST_END_TO_END=true GO111MODULE=on
+      env:
+        - GO111MODULE=on
+        - MUTAGEN_TEST_END_TO_END=full
+        - MUTAGEN_TEST_SSH=true
+        - MUTAGEN_TEST_DOCKER=true
+        - MUTAGEN_TEST_DOCKER_BASE_IMAGE_NAME=alpine
+        - MUTAGEN_TEST_DOCKER_IMAGE_NAME=mutagentest
+        - MUTAGEN_TEST_DOCKER_CONTAINER_NAME=mutagentester
 
-# Require use of sudo (we need this to set up SSH).
+# Require use of sudo (we need this to set up SSH and use Docker).
 sudo: required
+
+# Require the use of Docker. This should have no effect on Travis' macOS
+# infrastructure, where use of Docker is not supported.
+services:
+  - docker
+
+# Use the addons feature to get a newer version of Docker CE. The Travis CI
+# version is too old by default for Mutagen support.
+addons:
+  apt:
+    packages:
+      - docker-ce
 
 # Set our Go version(s). Mutagen generally only supports a specific version of
 # Go at a time, usually the latest.
@@ -28,29 +42,58 @@ sudo: required
 # than a float to be truncated:
 # https://github.com/travis-ci/travis-ci/issues/9247
 go:
-  - "1.11"
+  - "1.12.4"
 
 # Skip the default install step since it doesn't make sense for Mutagen.
 install: true
 
-# Run tests, upload the coverage report, and build bundles. We have to run a
-# quick build before running tests because the tests rely on the agent bundle
-# being available. We don't want to do a full build to start with though because
-# that can take a while. We fold coverage report uploading into the script
-# section to mirror the behavior on AppVeyor (which is necessary because
-# AppVeyor's after_test doesn't seem to fail the build if an upload fails (which
-# we want to do)).
-script:
-  - go version
+# Perform setup for testing. We set up SSH for all platforms, create test
+# partitions for macOS, and set up Docker on Linux.
+before_script:
   - source scripts/setup_ssh.sh
   - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then source scripts/create_test_partitions_darwin.sh ; fi
+  - if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then source scripts/setup_docker.sh ; fi
+
+# Run tests, upload the coverage report, and build bundles.
+#
+# We have to run a quick build (for the current platform only) before running
+# tests because the tests rely on the agent bundle being available. We may need
+# to switch this to a testing build if we start invoking Docker from macOS with
+# Linux containers. We don't want to do a full build to start with though
+# because that can take a while.
+#
+# We run a few different testing cycles. The first is our primary test cycle for
+# behavior and coverage reports. The second test cycle enables race detection,
+# but we use a smaller synchronization root for integration tests in this case
+# because the tests incur about an order-of-magnitude slowdown due to the race
+# detector. The third test cycle (which occurs only on Linux) is for the 386
+# architecture (where race detection isn't available anyway).
+#
+# We fold coverage report uploading into the script section to mirror the
+# behavior on AppVeyor (which is necessary because AppVeyor's after_test doesn't
+# seem to fail the build if an upload fails (which we want to do)).
+#
+# Finally, our build mode depends on what platform we're on. Only macOS is
+# capable of building release bundles.
+script:
+  - go version
   - go run scripts/build.go --mode=slim
-  - go test -v -race -coverpkg=./pkg/... -coverprofile=coverage.txt ./pkg/...
+  - go test -p 1 -v -coverpkg=./pkg/... -coverprofile=coverage.txt ./pkg/...
+  - MUTAGEN_TEST_END_TO_END=slim go test -p 1 -race ./pkg/...
   - if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then GOARCH=386 go run scripts/build.go --mode=slim ; fi
-  - if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then GOARCH=386 go test -v ./pkg/... ; fi
+  - if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then GOARCH=386 go test -p 1 ./pkg/... ; fi
   - bash <(curl -s https://codecov.io/bash)
   - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then go run scripts/build.go --mode=release ; fi
   - if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then go run scripts/build.go --mode=testing ; fi
+
+# Perform teardown after testing. We tear down any Docker infrastructure that
+# we've set up.
+# NOTE: This actually runs after before_deploy, but it's more logical to have it
+# at this point in the file. See
+# https://docs.travis-ci.com/user/customizing-the-build/ for more information.
+# It also keeps better symmetry with AppVeyor's configuration.
+after_script:
+  - if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then source scripts/teardown_docker.sh ; fi
 
 # HACK: If we're doing a release deployment, convert the Windows bundles to zip
 # format. This is a lot simpler than trying to add zip file support to the build

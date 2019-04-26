@@ -10,8 +10,8 @@ import (
 
 	"github.com/havoc-io/mutagen/pkg/compression"
 	"github.com/havoc-io/mutagen/pkg/encoding"
-	"github.com/havoc-io/mutagen/pkg/local"
 	"github.com/havoc-io/mutagen/pkg/mutagen"
+	"github.com/havoc-io/mutagen/pkg/protocols/local"
 	"github.com/havoc-io/mutagen/pkg/rsync"
 	"github.com/havoc-io/mutagen/pkg/session"
 	"github.com/havoc-io/mutagen/pkg/sync"
@@ -34,15 +34,29 @@ func ServeEndpoint(connection net.Conn, options ...EndpointServerOption) error {
 	// Defer closure of the connection.
 	defer connection.Close()
 
-	// Receive the client's version.
-	clientMajor, clientMinor, clientPatch, err := mutagen.ReceiveVersion(connection)
-	if err != nil {
-		return &handshakeTransportError{errors.Wrap(err, "unable to receive client version")}
+	// Send our magic number to the client.
+	if err := sendMagicNumber(connection, serverMagicNumber); err != nil {
+		return &handshakeTransportError{errors.Wrap(err, "unable to send server magic number")}
+	}
+
+	// Receive the client's magic number. We treat a mismatch of the magic
+	// number as a transport error as well, because it indicates that we're not
+	// actually talking to a Mutagen client.
+	if magicOk, err := receiveAndCompareMagicNumber(connection, clientMagicNumber); err != nil {
+		return &handshakeTransportError{errors.Wrap(err, "unable to receive client magic number")}
+	} else if !magicOk {
+		return &handshakeTransportError{errors.New("client magic number incorrect")}
 	}
 
 	// Send our version to the client.
 	if err := mutagen.SendVersion(connection); err != nil {
 		return &handshakeTransportError{errors.Wrap(err, "unable to send server version")}
+	}
+
+	// Receive the client's version.
+	clientMajor, clientMinor, clientPatch, err := mutagen.ReceiveVersion(connection)
+	if err != nil {
+		return &handshakeTransportError{errors.Wrap(err, "unable to receive client version")}
 	}
 
 	// Ensure that our Mutagen versions are compatible. For now, we enforce that
@@ -60,6 +74,8 @@ func ServeEndpoint(connection net.Conn, options ...EndpointServerOption) error {
 		return errors.New("version mismatch")
 	}
 
+	// TODO: Finish version negotiation.
+
 	// Enable read/write compression on the connection.
 	reader := compression.NewDecompressingReader(connection)
 	writer := compression.NewCompressingWriter(connection)
@@ -69,9 +85,9 @@ func ServeEndpoint(connection net.Conn, options ...EndpointServerOption) error {
 	decoder := encoding.NewProtobufDecoder(reader)
 
 	// Create an endpoint configuration and apply all options.
-	endpointOptions := &endpointServerOptions{}
+	endpointServerOptions := &endpointServerOptions{}
 	for _, o := range options {
-		o.apply(endpointOptions)
+		o.apply(endpointServerOptions)
 	}
 
 	// Receive the initialize request. If this fails, then send a failure
@@ -84,20 +100,37 @@ func ServeEndpoint(connection net.Conn, options ...EndpointServerOption) error {
 	}
 
 	// If a root path override has been specified, then apply it.
-	if endpointOptions.root != "" {
-		request.Root = endpointOptions.root
+	if endpointServerOptions.root != "" {
+		request.Root = endpointServerOptions.root
+	}
+
+	// If configuration overrides have been provided, then validate them and
+	// merge them into the main configuration.
+	if endpointServerOptions.configuration != nil {
+		if err := endpointServerOptions.configuration.EnsureValid(
+			session.ConfigurationSourceTypeAPIEndpointSpecific,
+		); err != nil {
+			err = errors.Wrap(err, "override configuration invalid")
+			encoder.Encode(&InitializeResponse{Error: err.Error()})
+			return err
+		}
+		request.Configuration = session.MergeConfigurations(
+			request.Configuration,
+			endpointServerOptions.configuration,
+		)
 	}
 
 	// If a connection validator has been provided, then ensure that it
 	// approves if the specified endpoint configuration.
-	if endpointOptions.connectionValidator != nil {
-		validationErr := endpointOptions.connectionValidator(
+	if endpointServerOptions.connectionValidator != nil {
+		err := endpointServerOptions.connectionValidator(
+			request.Root,
 			request.Session,
 			request.Version,
 			request.Configuration,
 			request.Alpha,
 		)
-		if validationErr != nil {
+		if err != nil {
 			err = errors.Wrap(err, "endpoint configuration rejected")
 			encoder.Encode(&InitializeResponse{Error: err.Error()})
 			return err
@@ -119,7 +152,7 @@ func ServeEndpoint(connection net.Conn, options ...EndpointServerOption) error {
 		request.Version,
 		request.Configuration,
 		request.Alpha,
-		endpointOptions.endpointOptions...,
+		endpointServerOptions.endpointOptions...,
 	)
 	if err != nil {
 		err = errors.Wrap(err, "unable to create underlying endpoint")
@@ -311,7 +344,7 @@ func (s *endpointServer) serveStage(request *StageRequest) error {
 	}
 
 	// Begin staging.
-	paths, signatures, receiver, err := s.endpoint.Stage(request.Entries)
+	paths, signatures, receiver, err := s.endpoint.Stage(request.Paths, request.Digests)
 	if err != nil {
 		s.encoder.Encode(&StageResponse{Error: err.Error()})
 		return errors.Wrap(err, "unable to begin staging")

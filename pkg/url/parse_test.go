@@ -1,18 +1,20 @@
 package url
 
 import (
+	"runtime"
 	"testing"
 )
 
 type parseTestCase struct {
 	raw      string
+	alpha    bool
 	fail     bool
 	expected *URL
 }
 
 func (c *parseTestCase) run(t *testing.T) {
 	// Attempt to parse.
-	url, err := Parse(c.raw)
+	url, err := Parse(c.raw, c.alpha)
 	if err != nil {
 		if !c.fail {
 			t.Fatal("parsing failed when it should have succeeded:", err)
@@ -46,72 +48,32 @@ func (c *parseTestCase) run(t *testing.T) {
 	if url.Path != c.expected.Path {
 		t.Error("path mismatch:", url.Path, "!=", c.expected.Path)
 	}
+
+	// Verify environment variables.
+	if len(url.Environment) != len(c.expected.Environment) {
+		t.Error("environment length mismatch:", len(url.Environment), "!=", len(c.expected.Environment))
+	} else {
+		for ek, ev := range c.expected.Environment {
+			if v, ok := url.Environment[ek]; !ok {
+				t.Error("expected environment variable", ek, "not in URL environment")
+			} else if v != ev {
+				t.Error("environment variable", ek, "value does not match expected:", v, "!=", ev)
+			}
+		}
+	}
 }
 
 func TestParseEmptyInvalid(t *testing.T) {
 	test := parseTestCase{
 		raw:  "",
 		fail: true,
-		expected: &URL{
-			Protocol: Protocol_Local,
-			Username: "",
-			Hostname: "",
-			Port:     0,
-			Path:     "",
-		},
 	}
 	test.run(t)
 }
 
-func TestParseEmptyHostnameAndPathInvalid(t *testing.T) {
+func TestParseLocalPath(t *testing.T) {
 	test := parseTestCase{
-		raw:  ":",
-		fail: true,
-		expected: &URL{
-			Protocol: Protocol_Local,
-			Username: "",
-			Hostname: "",
-			Port:     0,
-			Path:     "",
-		},
-	}
-	test.run(t)
-}
-
-func TestParseEmptyHostnameInvalid(t *testing.T) {
-	test := parseTestCase{
-		raw:  ":path",
-		fail: true,
-		expected: &URL{
-			Protocol: Protocol_Local,
-			Username: "",
-			Hostname: "",
-			Port:     0,
-			Path:     "",
-		},
-	}
-	test.run(t)
-}
-
-func TestParseUsernameEmptyHostnameInvalid(t *testing.T) {
-	test := parseTestCase{
-		raw:  "user@:path",
-		fail: true,
-		expected: &URL{
-			Protocol: Protocol_Local,
-			Username: "",
-			Hostname: "",
-			Port:     0,
-			Path:     "",
-		},
-	}
-	test.run(t)
-}
-
-func TestParsePath(t *testing.T) {
-	test := parseTestCase{
-		raw:  "/this/is/a:path",
-		fail: false,
+		raw: "/this/is/a:path",
 		expected: &URL{
 			Protocol: Protocol_Local,
 			Username: "",
@@ -123,85 +85,133 @@ func TestParsePath(t *testing.T) {
 	test.run(t)
 }
 
-func TestParseUsernameHostnameIsLocal(t *testing.T) {
+func TestParseLocalPathWithAtSymbol(t *testing.T) {
 	test := parseTestCase{
-		raw:  "user@host",
-		fail: false,
+		raw: "some@path",
 		expected: &URL{
 			Protocol: Protocol_Local,
 			Username: "",
 			Hostname: "",
 			Port:     0,
-			Path:     "user@host",
+			Path:     "some@path",
 		},
 	}
 	test.run(t)
 }
 
-func TestParseHostnameEmptyPath(t *testing.T) {
+func TestParsePOSIXSCPSSHWindowsLocal(t *testing.T) {
+	expected := &URL{
+		Protocol: Protocol_SSH,
+		Hostname: "C",
+		Path:     "/local/path",
+	}
+	if runtime.GOOS == "windows" {
+		expected = &URL{
+			Path: "C:/local/path",
+		}
+	}
+	test := &parseTestCase{
+		raw:      "C:/local/path",
+		expected: expected,
+	}
+	test.run(t)
+}
+
+func TestParseSCPSSHEmptyHostnameInvalid(t *testing.T) {
+	test := parseTestCase{
+		raw:  ":path",
+		fail: true,
+	}
+	test.run(t)
+}
+
+func TestParseSCPSSHEmptyHostnameAndPathInvalid(t *testing.T) {
+	test := parseTestCase{
+		raw:  ":",
+		fail: true,
+	}
+	test.run(t)
+}
+
+func TestParseSCPSSHUsernameEmptyHostnameInvalid(t *testing.T) {
+	test := parseTestCase{
+		raw:  "user@:path",
+		fail: true,
+	}
+	test.run(t)
+}
+
+func TestParseSCPSSHUsernameEmptyPathInvalid(t *testing.T) {
+	test := parseTestCase{
+		raw:  "user@host:",
+		fail: true,
+	}
+	test.run(t)
+}
+
+func TestParseSCPSSHEmptyUsernameInvalid(t *testing.T) {
+	test := parseTestCase{
+		raw:  "@host:path",
+		fail: true,
+	}
+	test.run(t)
+}
+
+func TestParseSCPSSHUsernamePortEmptyPathInvalid(t *testing.T) {
+	test := parseTestCase{
+		raw:  "user@host:5332:",
+		fail: true,
+	}
+	test.run(t)
+}
+
+func TestParseSCPSSHHostnameEmptyPathInvalid(t *testing.T) {
 	test := parseTestCase{
 		raw:  "host:",
-		fail: false,
-		expected: &URL{
-			Protocol: Protocol_SSH,
-			Username: "",
-			Hostname: "host",
-			Port:     0,
-			Path:     "",
-		},
+		fail: true,
 	}
 	test.run(t)
 }
 
-func TestParseHostnamePath(t *testing.T) {
-	test := parseTestCase{
-		raw:  "host:path",
-		fail: false,
-		expected: &URL{
-			Protocol: Protocol_SSH,
-			Username: "",
-			Hostname: "host",
-			Port:     0,
-			Path:     "path",
-		},
-	}
-	test.run(t)
-}
-
-func TestParseUsernameHostnamePath(t *testing.T) {
-	test := parseTestCase{
-		raw:  "user@host:path",
-		fail: false,
-		expected: &URL{
-			Protocol: Protocol_SSH,
-			Username: "user",
-			Hostname: "host",
-			Port:     0,
-			Path:     "path",
-		},
-	}
-	test.run(t)
-}
-
-func TestParseUsernameHostnamePathWithColonAtStart(t *testing.T) {
+func TestParseSCPSSHUsernameHostnamePathEmptyPortInvalid(t *testing.T) {
 	test := parseTestCase{
 		raw:  "user@host::path",
-		fail: false,
+		fail: true,
+	}
+	test.run(t)
+}
+
+func TestParseSCPSSHHostnamePath(t *testing.T) {
+	test := parseTestCase{
+		raw: "host:path",
 		expected: &URL{
 			Protocol: Protocol_SSH,
-			Username: "user",
+			Username: "",
 			Hostname: "host",
 			Port:     0,
-			Path:     ":path",
+			Path:     "path",
 		},
 	}
 	test.run(t)
 }
 
-func TestParseUsernameHostnamePathWithColonInMiddle(t *testing.T) {
+func TestParseSCPSSHUsernameHostnamePath(t *testing.T) {
 	test := parseTestCase{
-		raw:  "user@host:pa:th",
-		fail: false,
+		raw: "user@host:path",
+		expected: &URL{
+			Protocol: Protocol_SSH,
+			Username: "user",
+			Hostname: "host",
+			Port:     0,
+			Path:     "path",
+		},
+	}
+	test.run(t)
+}
+
+func TestParseSCPSSHUsernameHostnamePathWithColonInMiddle(t *testing.T) {
+	test := parseTestCase{
+		raw: "user@host:pa:th",
 		expected: &URL{
 			Protocol: Protocol_SSH,
 			Username: "user",
@@ -213,10 +223,9 @@ func TestParseUsernameHostnamePathWithColonInMiddle(t *testing.T) {
 	test.run(t)
 }
 
-func TestParseUsernameHostnamePathWithColonAtEnd(t *testing.T) {
+func TestParseSCPSSHUsernameHostnamePathWithColonAtEnd(t *testing.T) {
 	test := parseTestCase{
-		raw:  "user@host:path:",
-		fail: false,
+		raw: "user@host:path:",
 		expected: &URL{
 			Protocol: Protocol_SSH,
 			Username: "user",
@@ -228,10 +237,9 @@ func TestParseUsernameHostnamePathWithColonAtEnd(t *testing.T) {
 	test.run(t)
 }
 
-func TestParseUsernameHostnameWithAtPath(t *testing.T) {
+func TestParseSCPSSHUsernameHostnameWithAtPath(t *testing.T) {
 	test := parseTestCase{
-		raw:  "user@ho@st:path",
-		fail: false,
+		raw: "user@ho@st:path",
 		expected: &URL{
 			Protocol: Protocol_SSH,
 			Username: "user",
@@ -243,10 +251,9 @@ func TestParseUsernameHostnameWithAtPath(t *testing.T) {
 	test.run(t)
 }
 
-func TestParseUsernameHostnamePathWithAt(t *testing.T) {
+func TestParseSCPSSHUsernameHostnamePathWithAt(t *testing.T) {
 	test := parseTestCase{
-		raw:  "user@host:pa@th",
-		fail: false,
+		raw: "user@host:pa@th",
 		expected: &URL{
 			Protocol: Protocol_SSH,
 			Username: "user",
@@ -258,10 +265,9 @@ func TestParseUsernameHostnamePathWithAt(t *testing.T) {
 	test.run(t)
 }
 
-func TestParseUsernameHostnamePortPath(t *testing.T) {
+func TestParseSCPSSHUsernameHostnamePortPath(t *testing.T) {
 	test := parseTestCase{
-		raw:  "user@host:65535:path",
-		fail: false,
+		raw: "user@host:65535:path",
 		expected: &URL{
 			Protocol: Protocol_SSH,
 			Username: "user",
@@ -273,10 +279,9 @@ func TestParseUsernameHostnamePortPath(t *testing.T) {
 	test.run(t)
 }
 
-func TestParseUsernameHostnameZeroPortPath(t *testing.T) {
+func TestParseSCPSSHUsernameHostnameZeroPortPath(t *testing.T) {
 	test := parseTestCase{
-		raw:  "user@host:0:path",
-		fail: false,
+		raw: "user@host:0:path",
 		expected: &URL{
 			Protocol: Protocol_SSH,
 			Username: "user",
@@ -288,10 +293,9 @@ func TestParseUsernameHostnameZeroPortPath(t *testing.T) {
 	test.run(t)
 }
 
-func TestParseUsernameHostnameDoubleZeroPortPath(t *testing.T) {
+func TestParseSCPSSHUsernameHostnameDoubleZeroPortPath(t *testing.T) {
 	test := parseTestCase{
-		raw:  "user@host:00:path",
-		fail: false,
+		raw: "user@host:00:path",
 		expected: &URL{
 			Protocol: Protocol_SSH,
 			Username: "user",
@@ -303,25 +307,17 @@ func TestParseUsernameHostnameDoubleZeroPortPath(t *testing.T) {
 	test.run(t)
 }
 
-func TestParseUsernameHostnameNumericPath(t *testing.T) {
+func TestParseSCPSSHUsernameHostnameOutOfBoundsPortInvalid(t *testing.T) {
 	test := parseTestCase{
 		raw:  "user@host:65536:path",
-		fail: false,
-		expected: &URL{
-			Protocol: Protocol_SSH,
-			Username: "user",
-			Hostname: "host",
-			Port:     0,
-			Path:     "65536:path",
-		},
+		fail: true,
 	}
 	test.run(t)
 }
 
-func TestParseUsernameHostnameHexNumericPath(t *testing.T) {
+func TestParseSCPSSHUsernameHostnameHexNumericPath(t *testing.T) {
 	test := parseTestCase{
-		raw:  "user@host:aaa:path",
-		fail: false,
+		raw: "user@host:aaa:path",
 		expected: &URL{
 			Protocol: Protocol_SSH,
 			Username: "user",
@@ -333,10 +329,9 @@ func TestParseUsernameHostnameHexNumericPath(t *testing.T) {
 	test.run(t)
 }
 
-func TestParseUnicodeUsernameHostnamePath(t *testing.T) {
+func TestParseSCPSSHUnicodeUsernameHostnamePath(t *testing.T) {
 	test := parseTestCase{
-		raw:  "üsér@høst:пат",
-		fail: false,
+		raw: "üsér@høst:пат",
 		expected: &URL{
 			Protocol: Protocol_SSH,
 			Username: "üsér",
@@ -348,10 +343,9 @@ func TestParseUnicodeUsernameHostnamePath(t *testing.T) {
 	test.run(t)
 }
 
-func TestParseUnicodeUsernameHostnamePortPath(t *testing.T) {
+func TestParseSCPSSHUnicodeUsernameHostnamePortPath(t *testing.T) {
 	test := parseTestCase{
-		raw:  "üsér@høst:23:пат",
-		fail: false,
+		raw: "üsér@høst:23:пат",
 		expected: &URL{
 			Protocol: Protocol_SSH,
 			Username: "üsér",
@@ -371,12 +365,89 @@ func TestParseCustomInvalidScheme(t *testing.T) {
 	test.run(t)
 }
 
+func TestParseDockerWithBetaSpecificVariables(t *testing.T) {
+	test := parseTestCase{
+		raw:  "docker://cøntainer/пат/to/the file",
+		fail: false,
+		expected: &URL{
+			Protocol: Protocol_Docker,
+			Hostname: "cøntainer",
+			Path:     "/пат/to/the file",
+			Environment: map[string]string{
+				DockerHostEnvironmentVariable:      defaultDockerHost,
+				DockerTLSVerifyEnvironmentVariable: betaSpecificDockerTLSVerify,
+				DockerCertPathEnvironmentVariable:  "",
+			},
+		},
+	}
+	test.run(t)
+}
+
+func TestParseDockerWithWindowsPathAndAlphaSpecificVariables(t *testing.T) {
+	test := parseTestCase{
+		raw:   `docker://cøntainer/C:\пат/to\the file`,
+		alpha: true,
+		fail:  false,
+		expected: &URL{
+			Protocol: Protocol_Docker,
+			Hostname: "cøntainer",
+			Path:     `C:\пат/to\the file`,
+			Environment: map[string]string{
+				DockerHostEnvironmentVariable:      alphaSpecificDockerHost,
+				DockerTLSVerifyEnvironmentVariable: defaultDockerTLSVerify,
+				DockerCertPathEnvironmentVariable:  "",
+			},
+		},
+	}
+	test.run(t)
+}
+
+func TestParseDockerWithUsernameHomeRelativePathAndAlphaSpecificVariables(t *testing.T) {
+	test := parseTestCase{
+		raw:   "docker://üsér@cøntainer/~/пат/to/the file",
+		alpha: true,
+		fail:  false,
+		expected: &URL{
+			Protocol: Protocol_Docker,
+			Username: "üsér",
+			Hostname: "cøntainer",
+			Path:     "~/пат/to/the file",
+			Environment: map[string]string{
+				DockerHostEnvironmentVariable:      alphaSpecificDockerHost,
+				DockerTLSVerifyEnvironmentVariable: defaultDockerTLSVerify,
+				DockerCertPathEnvironmentVariable:  "",
+			},
+		},
+	}
+	test.run(t)
+}
+
 func TestParseCustom(t *testing.T) {
 	test := parseTestCase{
 		raw: "htt-...+p://example.org/",
 		expected: &URL{
 			Protocol: Protocol_Custom,
 			Path:     "htt-...+p://example.org/",
+		},
+	}
+	test.run(t)
+}
+
+func TestParseDockerWithUsernameUserRelativePathAndAlphaSpecificVariables(t *testing.T) {
+	test := parseTestCase{
+		raw:   "docker://üsér@cøntainer/~otheruser/пат/to/the file",
+		alpha: true,
+		fail:  false,
+		expected: &URL{
+			Protocol: Protocol_Docker,
+			Username: "üsér",
+			Hostname: "cøntainer",
+			Path:     "~otheruser/пат/to/the file",
+			Environment: map[string]string{
+				DockerHostEnvironmentVariable:      alphaSpecificDockerHost,
+				DockerTLSVerifyEnvironmentVariable: defaultDockerTLSVerify,
+				DockerCertPathEnvironmentVariable:  "",
+			},
 		},
 	}
 	test.run(t)
