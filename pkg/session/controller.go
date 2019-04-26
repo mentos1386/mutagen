@@ -14,6 +14,7 @@ import (
 	"github.com/golang/protobuf/ptypes"
 
 	"github.com/havoc-io/mutagen/pkg/encoding"
+	"github.com/havoc-io/mutagen/pkg/filesystem"
 	"github.com/havoc-io/mutagen/pkg/mutagen"
 	"github.com/havoc-io/mutagen/pkg/prompt"
 	"github.com/havoc-io/mutagen/pkg/rsync"
@@ -38,17 +39,30 @@ type controller struct {
 	// archivePath is the path to the serialized archive.
 	archivePath string
 	// stateLock guards and tracks changes to the session member's Paused field
-	// and the state member. Code may access static members of the session
-	// without holding this lock, but any reads or writes to the Paused field
-	// (including as part of a read of the whole session) should be guarded by
-	// this lock.
+	// and the state member.
 	stateLock *state.TrackingLock
-	// session is the current session state. It should be saved to disk any time
-	// it is modified.
+	// session records the associated session metadata and configuration. It is
+	// considered static and safe for concurrent access except for its Paused
+	// field, for which the stateLock member should be held. It should be saved
+	// to disk any time it is modified.
 	session *Session
+	// mergedAlphaConfiguration is the alpha-specific configuration object
+	// (computed from the core configuration and alpha-specific overrides). It
+	// is considered static and safe for concurrent access. It is a derived
+	// field and not saved to disk.
+	mergedAlphaConfiguration *Configuration
+	// mergedBetaConfiguration is the beta-specific configuration object
+	// (computed from the core configuration and beta-specific overrides). It is
+	// considered static and safe for concurrent access. It is a derived field
+	// and not saved to disk.
+	mergedBetaConfiguration *Configuration
 	// state represents the current synchronization state.
 	state *State
-	// lifecycleLock guards the disabled, cancel, and done members.
+	// lifecycleLock guards setting of the disabled, cancel, flushRequests, and
+	// done members. Access to these members is allowed for the synchronization
+	// loop without holding the lock. Any code wishing to set these members
+	// should first acquire the lock, then cancel the synchronization loop, and
+	// wait for it to complete before making any such changes.
 	lifecycleLock syncpkg.Mutex
 	// disabled indicates that no more changes to the synchronization loop
 	// lifecycle are allowed (i.e. no more synchronization loops can be started
@@ -59,12 +73,21 @@ type controller struct {
 	// cancel cancels the synchronization loop execution context. It should be
 	// nil if and only if there is no synchronization loop running.
 	cancel contextpkg.CancelFunc
+	// flushRequests is used pass flush requests to the synchronization loop. It
+	// is buffered, allowing a single request to be queued. All requests passed
+	// via that channel must be buffered and contain room for one error.
+	flushRequests chan chan error
 	// done will be closed by the current synchronization loop when it exits.
 	done chan struct{}
 }
 
 // newSession creates a new session and corresponding controller.
-func newSession(tracker *state.Tracker, alpha, beta *url.URL, configuration *Configuration, prompter string) (*controller, error) {
+func newSession(
+	tracker *state.Tracker,
+	alpha, beta *url.URL,
+	configuration, configurationAlpha, configurationBeta *Configuration,
+	prompter string,
+) (*controller, error) {
 	// Update status.
 	prompt.Message(prompter, "Creating session...")
 
@@ -75,7 +98,11 @@ func newSession(tracker *state.Tracker, alpha, beta *url.URL, configuration *Con
 	}
 
 	// Create an effective merged configuration.
-	configuration = MergeConfigurations(configuration, globalConfiguration)
+	mergedConfiguration := MergeConfigurations(globalConfiguration, configuration)
+
+	// Compute endpoint-specific merged configurations.
+	mergedAlphaConfiguration := MergeConfigurations(mergedConfiguration, configurationAlpha)
+	mergedBetaConfiguration := MergeConfigurations(mergedConfiguration, configurationBeta)
 
 	// Create a unique session identifier.
 	randomUUID, err := uuid.NewRandom()
@@ -95,11 +122,11 @@ func newSession(tracker *state.Tracker, alpha, beta *url.URL, configuration *Con
 	}
 
 	// Attempt to connect. Session creation is only allowed after if successful.
-	alphaEndpoint, err := connect(alpha, prompter, identifier, version, configuration, true)
+	alphaEndpoint, err := connect(alpha, prompter, identifier, version, mergedAlphaConfiguration, true)
 	if err != nil {
 		return nil, errors.Wrap(err, "unable to connect to alpha")
 	}
-	betaEndpoint, err := connect(beta, prompter, identifier, version, configuration, false)
+	betaEndpoint, err := connect(beta, prompter, identifier, version, mergedBetaConfiguration, false)
 	if err != nil {
 		alphaEndpoint.Shutdown()
 		return nil, errors.Wrap(err, "unable to connect to beta")
@@ -115,7 +142,9 @@ func newSession(tracker *state.Tracker, alpha, beta *url.URL, configuration *Con
 		CreatingVersionPatch: mutagen.VersionPatch,
 		Alpha:                alpha,
 		Beta:                 beta,
-		Configuration:        configuration,
+		Configuration:        mergedConfiguration,
+		ConfigurationAlpha:   configurationAlpha,
+		ConfigurationBeta:    configurationBeta,
 	}
 	archive := &sync.Archive{}
 
@@ -148,10 +177,12 @@ func newSession(tracker *state.Tracker, alpha, beta *url.URL, configuration *Con
 
 	// Create the controller.
 	controller := &controller{
-		sessionPath: sessionPath,
-		archivePath: archivePath,
-		stateLock:   state.NewTrackingLock(tracker),
-		session:     session,
+		sessionPath:              sessionPath,
+		archivePath:              archivePath,
+		stateLock:                state.NewTrackingLock(tracker),
+		session:                  session,
+		mergedAlphaConfiguration: mergedAlphaConfiguration,
+		mergedBetaConfiguration:  mergedBetaConfiguration,
 		state: &State{
 			Session: session,
 		},
@@ -160,6 +191,7 @@ func newSession(tracker *state.Tracker, alpha, beta *url.URL, configuration *Con
 	// Start a synchronization loop.
 	context, cancel := contextpkg.WithCancel(contextpkg.Background())
 	controller.cancel = cancel
+	controller.flushRequests = make(chan chan error, 1)
 	controller.done = make(chan struct{})
 	go controller.run(context, alphaEndpoint, betaEndpoint)
 
@@ -179,11 +211,21 @@ func loadSession(tracker *state.Tracker, identifier string) (*controller, error)
 		return nil, errors.Wrap(err, "unable to compute archive path")
 	}
 
-	// Load and validate the session.
+	// Load and validate the session. We have to populate a few optional fields
+	// before validation if they're not set. We can't do this in the Session
+	// literal because they'll be wiped out during unmarshalling, even if not
+	// set.
 	session := &Session{}
 	if err := encoding.LoadAndUnmarshalProtobuf(sessionPath, session); err != nil {
 		return nil, errors.Wrap(err, "unable to load session configuration")
-	} else if err = session.EnsureValid(); err != nil {
+	}
+	if session.ConfigurationAlpha == nil {
+		session.ConfigurationAlpha = &Configuration{}
+	}
+	if session.ConfigurationBeta == nil {
+		session.ConfigurationBeta = &Configuration{}
+	}
+	if err := session.EnsureValid(); err != nil {
 		return nil, errors.Wrap(err, "invalid session found on disk")
 	}
 
@@ -193,6 +235,14 @@ func loadSession(tracker *state.Tracker, identifier string) (*controller, error)
 		archivePath: archivePath,
 		stateLock:   state.NewTrackingLock(tracker),
 		session:     session,
+		mergedAlphaConfiguration: MergeConfigurations(
+			session.Configuration,
+			session.ConfigurationAlpha,
+		),
+		mergedBetaConfiguration: MergeConfigurations(
+			session.Configuration,
+			session.ConfigurationBeta,
+		),
 		state: &State{
 			Session: session,
 		},
@@ -202,6 +252,7 @@ func loadSession(tracker *state.Tracker, identifier string) (*controller, error)
 	if !session.Paused {
 		context, cancel := contextpkg.WithCancel(contextpkg.Background())
 		controller.cancel = cancel
+		controller.flushRequests = make(chan chan error, 1)
 		controller.done = make(chan struct{})
 		go controller.run(context, nil, nil)
 	}
@@ -222,6 +273,73 @@ func (c *controller) currentState() *State {
 	return c.state.Copy()
 }
 
+// flush attempts to force a synchronization cycle for the session. If wait is
+// specified, then the method will wait until a post-flush synchronization cycle
+// has completed. The provided context (which must be non-nil) can terminate
+// this wait early.
+func (c *controller) flush(prompter string, skipWait bool, context contextpkg.Context) error {
+	// Update status.
+	prompt.Message(prompter, fmt.Sprintf("Forcing synchronization cycle for session %s...", c.session.Identifier))
+
+	// Lock the controller's lifecycle and defer its release.
+	c.lifecycleLock.Lock()
+	defer c.lifecycleLock.Unlock()
+
+	// Don't allow any operations if the controller is disabled.
+	if c.disabled {
+		return errors.New("controller disabled")
+	}
+
+	// Check if the session is paused by checking whether or not it has a
+	// synchronization loop. It's an internal invariant that a session has a
+	// synchronization loop if and only if it is not paused, but checking for
+	// paused status requires holding the state lock, whereas checking for the
+	// existence of a synchronization loop only requires holding the lifecycle
+	// lock, which we do at this point.
+	if c.cancel == nil {
+		return errors.New("session is paused")
+	}
+
+	// Create a flush request.
+	request := make(chan error, 1)
+
+	// If we don't want to wait, then we can simply send the request in a
+	// non-blocking manner, in which case either this request (or one that's
+	// already queued) will be processed eventually. After that, we'd done.
+	if skipWait {
+		// Send the request in a non-blocking manner.
+		select {
+		case c.flushRequests <- request:
+		default:
+		}
+
+		// Success.
+		return nil
+	}
+
+	// Otherwise we need to send the request in a blocking manner, watching for
+	// cancellation in the mean time.
+	select {
+	case c.flushRequests <- request:
+	case <-context.Done():
+		return errors.New("flush cancelled before request could be sent")
+	}
+
+	// Now we need to wait for a response to the request, again watching for
+	// cancellation in the mean time.
+	select {
+	case err := <-request:
+		if err != nil {
+			return err
+		}
+	case <-context.Done():
+		return errors.New("flush cancelled while waiting for synchronization cycle")
+	}
+
+	// Success.
+	return nil
+}
+
 // resume attempts to reconnect and resume the session if it isn't currently
 // connected and synchronizing.
 func (c *controller) resume(prompter string) error {
@@ -237,7 +355,8 @@ func (c *controller) resume(prompter string) error {
 		return errors.New("controller disabled")
 	}
 
-	// Check if there's an existing synchronization loop.
+	// Check if there's an existing synchronization loop (i.e. if the session is
+	// unpaused).
 	if c.cancel != nil {
 		// If there is an existing synchronization loop, check if it's already
 		// in a state that's considered "connected".
@@ -267,6 +386,7 @@ func (c *controller) resume(prompter string) error {
 
 		// Nil out any lifecycle state.
 		c.cancel = nil
+		c.flushRequests = nil
 		c.done = nil
 	}
 
@@ -285,7 +405,7 @@ func (c *controller) resume(prompter string) error {
 		prompter,
 		c.session.Identifier,
 		c.session.Version,
-		c.session.Configuration,
+		c.mergedAlphaConfiguration,
 		true,
 	)
 	c.stateLock.Lock()
@@ -301,7 +421,7 @@ func (c *controller) resume(prompter string) error {
 		prompter,
 		c.session.Identifier,
 		c.session.Version,
-		c.session.Configuration,
+		c.mergedBetaConfiguration,
 		false,
 	)
 	c.stateLock.Lock()
@@ -313,6 +433,7 @@ func (c *controller) resume(prompter string) error {
 	// loop keep trying to connect.
 	context, cancel := contextpkg.WithCancel(contextpkg.Background())
 	c.cancel = cancel
+	c.flushRequests = make(chan chan error, 1)
 	c.done = make(chan struct{})
 	go c.run(context, alpha, beta)
 
@@ -383,6 +504,7 @@ func (c *controller) halt(mode haltMode, prompter string) error {
 
 		// Nil out any lifecycle state.
 		c.cancel = nil
+		c.flushRequests = nil
 		c.done = nil
 	}
 
@@ -461,7 +583,7 @@ func (c *controller) run(context contextpkg.Context, alpha, beta Endpoint) {
 					c.session.Alpha,
 					c.session.Identifier,
 					c.session.Version,
-					c.session.Configuration,
+					c.mergedAlphaConfiguration,
 					true,
 				)
 			}
@@ -488,7 +610,7 @@ func (c *controller) run(context contextpkg.Context, alpha, beta Endpoint) {
 					c.session.Beta,
 					c.session.Identifier,
 					c.session.Version,
-					c.session.Configuration,
+					c.mergedBetaConfiguration,
 					false,
 				)
 			}
@@ -544,6 +666,29 @@ func (c *controller) run(context contextpkg.Context, alpha, beta Endpoint) {
 
 // synchronize is the main synchronization loop for the controller.
 func (c *controller) synchronize(context contextpkg.Context, alpha, beta Endpoint) error {
+	// Clear any error state upon restart of this function. If there was a
+	// terminal error previously caused synchronization to fail, then the user
+	// will have had 30 seconds to review it (while the run loop is waiting to
+	// reconnect), so it's not like we're getting rid of it too quickly.
+	c.stateLock.Lock()
+	if c.state.LastError != "" {
+		c.state.LastError = ""
+		c.stateLock.Unlock()
+	} else {
+		c.stateLock.UnlockWithoutNotify()
+	}
+
+	// Track any flush request that we've pulled from the queue but haven't
+	// marked as complete. If we bail due to an error, then close out the
+	// request.
+	var flushRequest chan error
+	defer func() {
+		if flushRequest != nil {
+			flushRequest <- errors.New("synchronization cycle failed")
+			flushRequest = nil
+		}
+	}()
+
 	// Load the archive and extract the ancestor.
 	archive := &sync.Archive{}
 	if err := encoding.LoadAndUnmarshalProtobuf(c.archivePath, archive); err != nil {
@@ -553,11 +698,36 @@ func (c *controller) synchronize(context contextpkg.Context, alpha, beta Endpoin
 	}
 	ancestor := archive.Root
 
-	// Loop until there is a synchronization error. We always skip polling on
-	// the first time through the loop because changes may have occurred while
-	// we were halted. We also skip polling in the event that an endpoint asks
-	// for a scan retry.
-	skipPolling := true
+	// Compute the effective synchronization mode.
+	synchronizationMode := c.session.Configuration.SynchronizationMode
+	if synchronizationMode.IsDefault() {
+		synchronizationMode = c.session.Version.DefaultSynchronizationMode()
+	}
+
+	// Compute, on a per-endpoint basis, whether or not polling should be
+	// disabled.
+	αWatchMode := c.mergedAlphaConfiguration.WatchMode
+	βWatchMode := c.mergedBetaConfiguration.WatchMode
+	if αWatchMode.IsDefault() {
+		αWatchMode = c.session.Version.DefaultWatchMode()
+	}
+	if βWatchMode.IsDefault() {
+		βWatchMode = c.session.Version.DefaultWatchMode()
+	}
+	αDisablePolling := (αWatchMode == filesystem.WatchMode_WatchModeNoWatch)
+	βDisablePolling := (βWatchMode == filesystem.WatchMode_WatchModeNoWatch)
+
+	// Track whether or not we should skip over polling (and go straight to a
+	// synchronization cycle). This variable is normally used to continue a
+	// synchronization cycle after a scan failure without having to wait for
+	// polling, but we also use it when first starting a synchronization loop to
+	// force a check for changes that may have occurred while the
+	// synchronization loop wasn't running. The only time we don't force this
+	// check on startup is when both endpoints have polling disabled, which is
+	// an indication that the session should operate in a fully manual mode.
+	skipPolling := (!αDisablePolling || !βDisablePolling)
+
+	// Loop until there is a synchronization error.
 	for {
 		// Unless we've been requested to skip polling, wait for a dirty state
 		// while monitoring for cancellation. If we've been requested to skip
@@ -573,21 +743,34 @@ func (c *controller) synchronize(context contextpkg.Context, alpha, beta Endpoin
 			// just track cancellation there separately.
 			pollContext, pollCancel := contextpkg.WithCancel(contextpkg.Background())
 
-			// Start alpha polling.
+			// Start alpha polling. If alpha has been put into a no-watch mode,
+			// then don't actually start polling there, because we don't want a
+			// malfunctioning (or malicious) endpoint to be able to force
+			// synchronization when it's not supposed to be able to.
 			αPollResults := make(chan error, 1)
 			go func() {
-				αPollResults <- alpha.Poll(pollContext)
+				if αDisablePolling {
+					<-pollContext.Done()
+					αPollResults <- nil
+				} else {
+					αPollResults <- alpha.Poll(pollContext)
+				}
 			}()
 
-			// Start beta polling.
+			// Start beta polling. The logic here mirrors that for alpha above.
 			βPollResults := make(chan error, 1)
 			go func() {
-				βPollResults <- beta.Poll(pollContext)
+				if βDisablePolling {
+					<-pollContext.Done()
+					βPollResults <- nil
+				} else {
+					βPollResults <- beta.Poll(pollContext)
+				}
 			}()
 
-			// Wait for either poll to return an event or an error, or for
-			// cancellation. In any of these cases, cancel polling and ensure
-			// that both polling operations have completed.
+			// Wait for either poll to return an event or an error, for a flush
+			// request, or for cancellation. In any of these cases, cancel
+			// polling and ensure that both polling operations have completed.
 			var αPollErr, βPollErr error
 			cancelled := false
 			select {
@@ -597,6 +780,13 @@ func (c *controller) synchronize(context contextpkg.Context, alpha, beta Endpoin
 			case βPollErr = <-βPollResults:
 				pollCancel()
 				αPollErr = <-αPollResults
+			case flushRequest = <-c.flushRequests:
+				if cap(flushRequest) < 1 {
+					panic("unbuffered flush request")
+				}
+				pollCancel()
+				αPollErr = <-αPollResults
+				βPollErr = <-βPollResults
 			case <-context.Done():
 				cancelled = true
 				pollCancel()
@@ -677,6 +867,18 @@ func (c *controller) synchronize(context contextpkg.Context, alpha, beta Endpoin
 			continue
 		}
 
+		// Clear the last error (if any) after a successful scan. Since scan
+		// errors are the only non-terminal errors, and since we know that we've
+		// cleared any other terminal error at the entry to this loop, we know
+		// that what we're covering up here can only be a scan error.
+		c.stateLock.Lock()
+		if c.state.LastError != "" {
+			c.state.LastError = ""
+			c.stateLock.Unlock()
+		} else {
+			c.stateLock.UnlockWithoutNotify()
+		}
+
 		// If one side preserves executability and the other does not, then
 		// propagate executability from the preserving side to the
 		// non-preserving side.
@@ -691,12 +893,25 @@ func (c *controller) synchronize(context contextpkg.Context, alpha, beta Endpoin
 		c.state.Status = Status_Reconciling
 		c.stateLock.Unlock()
 
-		// Perform reconciliation and record conflicts.
+		// Perform reconciliation.
 		ancestorChanges, αTransitions, βTransitions, conflicts := sync.Reconcile(
-			ancestor, αSnapshot, βSnapshot,
+			ancestor,
+			αSnapshot,
+			βSnapshot,
+			synchronizationMode,
 		)
+
+		// Create a slim copy of the conflicts so that we don't need to hold
+		// the full-size versions in memory or send them over the wire.
+		var slimConflicts []*sync.Conflict
+		if len(conflicts) > 0 {
+			slimConflicts = make([]*sync.Conflict, len(conflicts))
+			for c, conflict := range conflicts {
+				slimConflicts[c] = conflict.CopySlim()
+			}
+		}
 		c.stateLock.Lock()
-		c.state.Conflicts = conflicts
+		c.state.Conflicts = slimConflicts
 		c.stateLock.Unlock()
 
 		// Check if a root deletion is being propagated. If so, switch to a
@@ -772,17 +987,20 @@ func (c *controller) synchronize(context contextpkg.Context, alpha, beta Endpoin
 		c.stateLock.Lock()
 		c.state.Status = Status_StagingAlpha
 		c.stateLock.Unlock()
-		if entries, err := sync.TransitionDependencies(αTransitions); err != nil {
+		if paths, digests, err := sync.TransitionDependencies(αTransitions); err != nil {
 			return errors.Wrap(err, "unable to determine paths for staging on alpha")
-		} else if len(entries) > 0 {
-			paths, signatures, receiver, err := alpha.Stage(entries)
+		} else if len(paths) > 0 {
+			filteredPaths, signatures, receiver, err := alpha.Stage(paths, digests)
 			if err != nil {
 				return errors.Wrap(err, "unable to begin staging on alpha")
 			}
-			if len(paths) > 0 {
-				receiver = rsync.NewMonitoringReceiver(receiver, paths, monitor)
+			if !filteredPathsAreSubset(filteredPaths, paths) {
+				return errors.New("alpha returned incorrect subset of staging paths")
+			}
+			if len(filteredPaths) > 0 {
+				receiver = rsync.NewMonitoringReceiver(receiver, filteredPaths, monitor)
 				receiver = rsync.NewPreemptableReceiver(receiver, context)
-				if err = beta.Supply(paths, signatures, receiver); err != nil {
+				if err = beta.Supply(filteredPaths, signatures, receiver); err != nil {
 					return errors.Wrap(err, "unable to stage files on alpha")
 				}
 			}
@@ -792,17 +1010,20 @@ func (c *controller) synchronize(context contextpkg.Context, alpha, beta Endpoin
 		c.stateLock.Lock()
 		c.state.Status = Status_StagingBeta
 		c.stateLock.Unlock()
-		if entries, err := sync.TransitionDependencies(βTransitions); err != nil {
+		if paths, digests, err := sync.TransitionDependencies(βTransitions); err != nil {
 			return errors.Wrap(err, "unable to determine paths for staging on beta")
-		} else if len(entries) > 0 {
-			paths, signatures, receiver, err := beta.Stage(entries)
+		} else if len(paths) > 0 {
+			filteredPaths, signatures, receiver, err := beta.Stage(paths, digests)
 			if err != nil {
 				return errors.Wrap(err, "unable to begin staging on beta")
 			}
-			if len(paths) > 0 {
-				receiver = rsync.NewMonitoringReceiver(receiver, paths, monitor)
+			if !filteredPathsAreSubset(filteredPaths, paths) {
+				return errors.New("beta returned incorrect subset of staging paths")
+			}
+			if len(filteredPaths) > 0 {
+				receiver = rsync.NewMonitoringReceiver(receiver, filteredPaths, monitor)
 				receiver = rsync.NewPreemptableReceiver(receiver, context)
-				if err = alpha.Supply(paths, signatures, receiver); err != nil {
+				if err = alpha.Supply(filteredPaths, signatures, receiver); err != nil {
 					return errors.Wrap(err, "unable to stage files on beta")
 				}
 			}
@@ -892,11 +1113,16 @@ func (c *controller) synchronize(context contextpkg.Context, alpha, beta Endpoin
 			return errors.Wrap(βTransitionErr, "unable to apply changes to beta")
 		}
 
-		// After a successful synchronization cycle, increment the cycle count
-		// and clear any synchronization error.
+		// Increment the synchronization cycle count.
 		c.stateLock.Lock()
 		c.state.SuccessfulSynchronizationCycles++
-		c.state.LastError = ""
 		c.stateLock.Unlock()
+
+		// If a flush request triggered this synchronization cycle, then tell it
+		// that the cycle has completed and remove it from our tracking.
+		if flushRequest != nil {
+			flushRequest <- nil
+			flushRequest = nil
+		}
 	}
 }

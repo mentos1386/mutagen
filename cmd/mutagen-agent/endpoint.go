@@ -12,7 +12,7 @@ import (
 
 	"github.com/havoc-io/mutagen/cmd"
 	"github.com/havoc-io/mutagen/pkg/agent"
-	"github.com/havoc-io/mutagen/pkg/local"
+	"github.com/havoc-io/mutagen/pkg/protocols/local"
 	"github.com/havoc-io/mutagen/pkg/remote"
 )
 
@@ -55,6 +55,12 @@ func housekeepRegularly(context context.Context) {
 }
 
 func endpointMain(command *cobra.Command, arguments []string) error {
+	// Create a channel to track termination signals. We do this before creating
+	// and starting other infrastructure so that we can ensure things terminate
+	// smoothly, not mid-initialization.
+	signalTermination := make(chan os.Signal, 1)
+	signal.Notify(signalTermination, cmd.TerminationSignals...)
+
 	// Set up regular housekeeping and defer its shutdown.
 	housekeepingContext, housekeepingCancel := context.WithCancel(context.Background())
 	defer housekeepingCancel()
@@ -71,8 +77,6 @@ func endpointMain(command *cobra.Command, arguments []string) error {
 	}()
 
 	// Wait for termination from a signal or the endpoint.
-	signalTermination := make(chan os.Signal, 1)
-	signal.Notify(signalTermination, cmd.TerminationSignals...)
 	select {
 	case sig := <-signalTermination:
 		return errors.Errorf("terminated by signal: %s", sig)
@@ -88,12 +92,16 @@ var endpointCommand = &cobra.Command{
 }
 
 var endpointConfiguration struct {
+	// help indicates whether or not help information should be shown for the
+	// command.
 	help bool
 }
 
 func init() {
-	// Bind flags to configuration. We manually add help to override the default
-	// message, but Cobra still implements it automatically.
+	// Grab a handle for the command line flags.
 	flags := endpointCommand.Flags()
+
+	// Manually add a help flag to override the default message. Cobra will
+	// still implement its logic automatically.
 	flags.BoolVarP(&endpointConfiguration.help, "help", "h", false, "Show help information")
 }

@@ -22,6 +22,8 @@ func (p *createStreamPrompter) sendReceive(request *CreateResponse) (*CreateRequ
 	// Receive the response.
 	if response, err := p.stream.Recv(); err != nil {
 		return nil, errors.Wrap(err, "unable to receive response")
+	} else if err = response.ensureValid(false); err != nil {
+		return nil, errors.Wrap(err, "invalid response received")
 	} else {
 		return response, nil
 	}
@@ -42,6 +44,42 @@ func (p *createStreamPrompter) Prompt(prompt string) (string, error) {
 	}
 }
 
+// flushStreamPrompter implements Prompter on top of a Sessions_FlushServer
+// stream.
+type flushStreamPrompter struct {
+	// stream is the underlying Sessions_FlushServer stream.
+	stream Sessions_FlushServer
+}
+
+// sendReceive performs a send/receive cycle by sending a FlushResponse and
+// receiving a FlushRequest.
+func (p *flushStreamPrompter) sendReceive(request *FlushResponse) (*FlushRequest, error) {
+	// Send the request.
+	if err := p.stream.Send(request); err != nil {
+		return nil, errors.Wrap(err, "unable to send request")
+	}
+
+	// Receive the response.
+	if response, err := p.stream.Recv(); err != nil {
+		return nil, errors.Wrap(err, "unable to receive response")
+	} else if err = response.ensureValid(false); err != nil {
+		return nil, errors.Wrap(err, "invalid response received")
+	} else {
+		return response, nil
+	}
+}
+
+// Message implements the Message method of Prompter.
+func (p *flushStreamPrompter) Message(message string) error {
+	_, err := p.sendReceive(&FlushResponse{Message: message})
+	return err
+}
+
+// Prompt implements the Prompt method of Prompter.
+func (p *flushStreamPrompter) Prompt(_ string) (string, error) {
+	return "", errors.New("prompting not supported on flush message streams")
+}
+
 // pauseStreamPrompter implements Prompter on top of a Sessions_PauseServer
 // stream.
 type pauseStreamPrompter struct {
@@ -60,6 +98,8 @@ func (p *pauseStreamPrompter) sendReceive(request *PauseResponse) (*PauseRequest
 	// Receive the response.
 	if response, err := p.stream.Recv(); err != nil {
 		return nil, errors.Wrap(err, "unable to receive response")
+	} else if err = response.ensureValid(false); err != nil {
+		return nil, errors.Wrap(err, "invalid response received")
 	} else {
 		return response, nil
 	}
@@ -94,6 +134,8 @@ func (p *resumeStreamPrompter) sendReceive(request *ResumeResponse) (*ResumeRequ
 	// Receive the response.
 	if response, err := p.stream.Recv(); err != nil {
 		return nil, errors.Wrap(err, "unable to receive response")
+	} else if err = response.ensureValid(false); err != nil {
+		return nil, errors.Wrap(err, "invalid response received")
 	} else {
 		return response, nil
 	}
@@ -132,6 +174,8 @@ func (p *terminateStreamPrompter) sendReceive(request *TerminateResponse) (*Term
 	// Receive the response.
 	if response, err := p.stream.Recv(); err != nil {
 		return nil, errors.Wrap(err, "unable to receive response")
+	} else if err = response.ensureValid(false); err != nil {
+		return nil, errors.Wrap(err, "invalid response received")
 	} else {
 		return response, nil
 	}

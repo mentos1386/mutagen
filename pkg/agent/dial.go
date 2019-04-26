@@ -3,14 +3,11 @@ package agent
 import (
 	"bytes"
 	"fmt"
-	"os"
-	"runtime"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"github.com/pkg/errors"
-
-	"github.com/google/uuid"
 
 	"github.com/havoc-io/mutagen/pkg/filesystem"
 	"github.com/havoc-io/mutagen/pkg/mutagen"
@@ -20,183 +17,15 @@ import (
 	"github.com/havoc-io/mutagen/pkg/session"
 )
 
-func probePOSIX(transport Transport) (string, string, error) {
-	// Try to invoke uname and print kernel and machine name.
-	unameSMBytes, err := output(transport, "uname -s -m")
-	if err != nil {
-		return "", "", errors.Wrap(err, "unable to invoke uname")
-	} else if !utf8.Valid(unameSMBytes) {
-		return "", "", errors.New("remote output is not UTF-8 encoded")
-	}
-
-	// Parse uname output.
-	unameSM := strings.Split(strings.TrimSpace(string(unameSMBytes)), " ")
-	if len(unameSM) != 2 {
-		return "", "", errors.New("invalid uname output")
-	}
-	unameS := unameSM[0]
-	unameM := unameSM[1]
-
-	// Translate GOOS.
-	var goos string
-	if unameSIsWindowsPosix(unameS) {
-		goos = "windows"
-	} else if g, ok := unameSToGOOS[unameS]; ok {
-		goos = g
-	} else {
-		return "", "", errors.New("unknown platform")
-	}
-
-	// Translate GOARCH.
-	goarch, ok := unameMToGOARCH[unameM]
-	if !ok {
-		return "", "", errors.New("unknown architecture")
-	}
-
-	// Success.
-	return goos, goarch, nil
-}
-
-func probeWindows(transport Transport) (string, string, error) {
-	// Attempt to dump the remote environment.
-	outputBytes, err := output(transport, "cmd /c set")
-	if err != nil {
-		return "", "", errors.Wrap(err, "unable to invoke remote environment printing")
-	} else if !utf8.Valid(outputBytes) {
-		return "", "", errors.New("remote output is not UTF-8 encoded")
-	}
-
-	// Parse the environment output.
-	output := string(outputBytes)
-	output = strings.Replace(output, "\r\n", "\n", -1)
-	output = strings.TrimSpace(output)
-	environment := strings.Split(output, "\n")
-
-	// Extract the OS and PROCESSOR_ARCHITECTURE environment variables.
-	var os, processorArchitecture string
-	for _, e := range environment {
-		if strings.HasPrefix(e, "OS=") {
-			os = e[3:]
-		} else if strings.HasPrefix(e, "PROCESSOR_ARCHITECTURE=") {
-			processorArchitecture = e[23:]
-		}
-	}
-
-	// Translate to GOOS.
-	goos, ok := osEnvToGOOS[os]
-	if !ok {
-		return "", "", errors.New("unknown platform")
-	}
-
-	// Translate to GOARCH.
-	goarch, ok := processorArchitectureEnvToGOARCH[processorArchitecture]
-	if !ok {
-		return "", "", errors.New("unknown architecture")
-	}
-
-	// Success.
-	return goos, goarch, nil
-}
-
-// probe attempts to identify the properties of the target platform, namely
-// GOOS, GOARCH, and whether or not it's a POSIX environment (which it might be
-// even on Windows).
-func probe(transport Transport, prompter string) (string, string, bool, error) {
-	// Attempt to probe for a POSIX platform. This might apply to certain
-	// Windows environments as well.
-	if err := prompt.Message(prompter, "Probing endpoint (POSIX)..."); err != nil {
-		return "", "", false, errors.Wrap(err, "unable to message prompter")
-	}
-	if goos, goarch, err := probePOSIX(transport); err == nil {
-		return goos, goarch, true, nil
-	}
-
-	// If that fails, attempt a Windows fallback.
-	if err := prompt.Message(prompter, "Probing endpoint (Windows)..."); err != nil {
-		return "", "", false, errors.Wrap(err, "unable to message prompter")
-	}
-	if goos, goarch, err := probeWindows(transport); err == nil {
-		return goos, goarch, false, nil
-	}
-
-	// Failure.
-	return "", "", false, errors.New("exhausted probing methods")
-}
-
-func install(transport Transport, prompter string) error {
-	// Detect the target platform.
-	goos, goarch, posix, err := probe(transport, prompter)
-	if err != nil {
-		return errors.Wrap(err, "unable to probe remote platform")
-	}
-
-	// Find the appropriate agent binary. Ensure that it's cleaned up when we're
-	// done with it.
-	if err := prompt.Message(prompter, "Extracting agent..."); err != nil {
-		return errors.Wrap(err, "unable to message prompter")
-	}
-	agentExecutable, err := executableForPlatform(goos, goarch)
-	if err != nil {
-		return errors.Wrap(err, "unable to get agent for platform")
-	}
-	defer os.Remove(agentExecutable)
-
-	// Copy the agent to the remote. We use a unique identifier for the
-	// temporary destination. For Windows remotes, we add a ".exe" suffix, which
-	// will automatically make the file executable on the remote (POSIX systems
-	// are handled separately below). For POSIX systems, we add a dot prefix to
-	// hide the executable.
-	if err := prompt.Message(prompter, "Copying agent..."); err != nil {
-		return errors.Wrap(err, "unable to message prompter")
-	}
-	randomUUID, err := uuid.NewRandom()
-	if err != nil {
-		return errors.Wrap(err, "unable to generate UUID for agent copying")
-	}
-	destination := agentBaseName + randomUUID.String()
-	if goos == "windows" {
-		destination += ".exe"
-	}
-	if posix {
-		destination = "." + destination
-	}
-	if err = transport.Copy(agentExecutable, destination); err != nil {
-		return errors.Wrap(err, "unable to copy agent binary")
-	}
-
-	// For cases where we're copying from a Windows system to a POSIX remote,
-	// invoke "chmod +x" to add executability back to the copied binary. This is
-	// necessary under the specified circumstances because as soon as the agent
-	// binary is extracted from the bundle, it will lose its executability bit
-	// since Windows can't preserve this. This will also be applied to Windows
-	// POSIX remotes, but a "chmod +x" there will just be a no-op.
-	if runtime.GOOS == "windows" && posix {
-		if err := prompt.Message(prompter, "Setting agent executability..."); err != nil {
-			return errors.Wrap(err, "unable to message prompter")
-		}
-		executabilityCommand := fmt.Sprintf("chmod +x %s", destination)
-		if err := run(transport, executabilityCommand); err != nil {
-			return errors.Wrap(err, "unable to set agent executability")
-		}
-	}
-
-	// Invoke the remote installation.
-	if err := prompt.Message(prompter, "Installing agent..."); err != nil {
-		return errors.Wrap(err, "unable to message prompter")
-	}
-	var installCommand string
-	if posix {
-		installCommand = fmt.Sprintf("./%s %s", destination, ModeInstall)
-	} else {
-		installCommand = fmt.Sprintf("%s %s", destination, ModeInstall)
-	}
-	if err := run(transport, installCommand); err != nil {
-		return errors.Wrap(err, "unable to invoke agent installation")
-	}
-
-	// Success.
-	return nil
-}
+const (
+	// agentKillDelay is the maximum amount of time that Mutagen will wait for
+	// an agent process to exit on its own in the event of an error before
+	// issuing a kill request. It's necessary to make this non-zero because
+	// agent transport executables need to be allowed time to exit on failure so
+	// that we can get their true exit codes instead of killing them immediately
+	// on a handshake error.
+	agentKillDelay = 5 * time.Second
+)
 
 func connect(
 	transport Transport,
@@ -249,8 +78,12 @@ func connect(
 		return nil, false, false, errors.Wrap(err, "unable to create agent command")
 	}
 
-	// Create a connection that wrap's the process' standard input/output.
-	connection, err := process.NewConnection(agentProcess)
+	// Create a connection that wraps the process' standard input/output. We
+	// set a non-zero kill delay so that, if there's a handshake failure, the
+	// process will be allowed to exit with its natural exit code (instead of an
+	// exit code due to forced termination) that we can use to diagnose the
+	// connection issue.
+	connection, err := process.NewConnection(agentProcess, agentKillDelay)
 	if err != nil {
 		return nil, false, false, errors.Wrap(err, "unable to create agent process connection")
 	}
@@ -284,11 +117,11 @@ func connect(
 	// terminating the process) on failure), and probe the issue.
 	endpoint, err := remote.NewEndpointClient(connection, root, session, version, configuration, alpha)
 	if remote.IsHandshakeTransportError(err) {
-		// Wait for the process to complete. We need to do this before touching
-		// the error buffer because it isn't safe for concurrent usage, and
-		// until Wait completes, the I/O forwarding Goroutines can still be
-		// running.
-		processErr := agentProcess.Wait()
+		// At this point, we know that the agent process and its I/O forwarding
+		// Goroutines have terminated because NewEndpointClient will have closed
+		// the connection on error and the Close method won't return until the
+		// process has fully terminated. As a result, it's safe to touch the
+		// error buffer and process state for the agent process at this point.
 
 		// Extract error output and ensure it's UTF-8.
 		errorOutput := errorBuffer.String()
@@ -296,36 +129,38 @@ func connect(
 			return nil, false, false, errors.New("remote did not return UTF-8 output")
 		}
 
-		// If there's an error, check if the command exits with a POSIX "command
-		// not found" error, a Windows invalid formatting message (an indication
-		// of a cmd.exe environment), or a Windows "command not found" message.
-		// We can't really check this until we try to interact with the process
-		// and see that it misbehaves. We wouldn't be able to see this returned
-		// as an error from the Start method because it just starts the
-		// transport command itself, not the remote command.
-		if process.IsPOSIXShellCommandNotFound(processErr) {
-			return nil, true, false, errors.New("command not found")
-		} else if process.OutputIsWindowsInvalidCommand(errorOutput) {
-			return nil, false, true, errors.New("invalid command")
-		} else if process.OutputIsWindowsCommandNotFound(errorOutput) {
-			return nil, true, true, errors.New("command not found")
+		// See if we can understand the exact nature of the failure. In
+		// particular, we want to identify whether or not we should try to
+		// (re-)install the agent binary and whether or not we're talking to a
+		// Windows cmd.exe environment. We have to delegate this responsibility
+		// to the transport, because each has different error classification
+		// mechanisms. If the transport can't figure it out but we have some
+		// error output, then give it to the user, because they're probably in a
+		// better place to interpret the error output then they are to interpret
+		// the transport's reason for classification failure. If we don't have
+		// error output, then just tell the user why the transport failed to
+		// classify the failure.
+		tryInstall, cmdExe, err := transport.ClassifyError(agentProcess.ProcessState, errorOutput)
+		if err != nil {
+			if errorOutput != "" {
+				return nil, false, false, errors.Errorf(
+					"agent handshake failed with error output:\n%s",
+					strings.TrimSpace(errorOutput),
+				)
+			}
+			return nil, false, false, errors.Wrap(err, "unable to classify agent handshake error")
 		}
 
-		// Otherwise, check if there is any error output that might illuminate
-		// what happened. We let this overrule any err value here since that
-		// value will probably just be an EOF.
-		if errorOutput != "" {
-			return nil, false, false, errors.Errorf(
-				"agent process failed with error output:\n%s",
-				strings.TrimSpace(errorOutput),
-			)
-		}
-
-		// Otherwise just wrap up whatever error we have.
-		return nil, false, false, errors.Wrap(err, "unable to handshake with agent process")
+		// The transport was able to classify the error, so return that
+		// information.
+		return nil, tryInstall, cmdExe, errors.New("unable to handshake with agent process")
 	} else if err != nil {
 		return nil, false, false, errors.Wrap(err, "unable to create endpoint client")
 	}
+
+	// Now that we've successfully connected, disable the kill delay on the
+	// process connection.
+	connection.SetKillDelay(time.Duration(0))
 
 	// Done.
 	return endpoint, false, false, nil

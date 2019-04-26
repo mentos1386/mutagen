@@ -15,6 +15,19 @@ import (
 	"github.com/havoc-io/mutagen/pkg/filesystem"
 )
 
+const (
+	// defaultFilePermissionMode is the default file permission mode to use in
+	// transition-based tests.
+	defaultFilePermissionMode = filesystem.ModePermissionUserRead | filesystem.ModePermissionUserWrite |
+		filesystem.ModePermissionGroupRead |
+		filesystem.ModePermissionOthersRead
+	// defaultDirectoryPermissionMode is the default directory permission mode
+	// to use in transition-based tests.
+	defaultDirectoryPermissionMode = filesystem.ModePermissionUserRead | filesystem.ModePermissionUserWrite | filesystem.ModePermissionUserExecute |
+		filesystem.ModePermissionGroupRead | filesystem.ModePermissionGroupExecute |
+		filesystem.ModePermissionOthersRead | filesystem.ModePermissionOthersExecute
+)
+
 // testEntryDecomposer provides the implementation for testDecomposeEntry.
 type testEntryDecomposer struct {
 	// creation records whether or not the decomposition is for a creation
@@ -32,7 +45,7 @@ func (d *testEntryDecomposer) decompose(path string, entry *Entry) {
 	}
 
 	// Create a shallow copy of the entry.
-	shallowEntry := entry.CopyShallow()
+	shallowEntry := entry.copySlim()
 
 	// If this is a creation decomposition, add this entry before processing any
 	// contents.
@@ -149,7 +162,7 @@ func testTransitionCreate(temporaryDirectory string, entry *Entry, contentMap ma
 
 	// Determine whether or not we need to recompose Unicode when transitioning
 	// inside this directory.
-	recomposeUnicode, err := filesystem.DecomposesUnicode(parent)
+	recomposeUnicode, err := filesystem.DecomposesUnicodeByPath(parent)
 	if err != nil {
 		os.RemoveAll(parent)
 		return "", "", errors.Wrap(err, "unable to determine Unicode decomposition behavior")
@@ -174,8 +187,21 @@ func testTransitionCreate(temporaryDirectory string, entry *Entry, contentMap ma
 	}
 	defer provider.finalize()
 
-	// Perform the creation transition.
-	if entries, problems := Transition(root, transitions, nil, SymlinkMode_SymlinkPortable, recomposeUnicode, provider); len(problems) != 0 {
+	// Perform the creation transition. For this particular transition
+	// operation, we operate in POSIX raw symbolic link handling, because we
+	// want to be able to create symbolic links for testing that would be
+	// invalid under portable mode.
+	if entries, problems := Transition(
+		root,
+		transitions,
+		nil,
+		SymlinkMode_SymlinkPOSIXRaw,
+		defaultFilePermissionMode,
+		defaultDirectoryPermissionMode,
+		nil,
+		recomposeUnicode,
+		provider,
+	); len(problems) != 0 {
 		os.RemoveAll(parent)
 		return "", "", errors.New("problems occurred during creation transition")
 	} else if len(entries) != len(transitions) {
@@ -210,7 +236,7 @@ func testTransitionRemove(root string, expected *Entry, cache *Cache, symlinkMod
 	// Unicode recomposition behavior.
 	var recomposeUnicode bool
 	if expected != nil && expected.Kind == EntryKind_Directory {
-		if r, err := filesystem.DecomposesUnicode(root); err != nil {
+		if r, err := filesystem.DecomposesUnicodeByPath(root); err != nil {
 			return errors.Wrap(err, "unable to determine Unicode decomposition behavior")
 		} else {
 			recomposeUnicode = r
@@ -218,7 +244,17 @@ func testTransitionRemove(root string, expected *Entry, cache *Cache, symlinkMod
 	}
 
 	// Perform the removal transition.
-	if entries, problems := Transition(root, transitions, cache, symlinkMode, recomposeUnicode, nil); len(problems) != 0 {
+	if entries, problems := Transition(
+		root,
+		transitions,
+		cache,
+		symlinkMode,
+		defaultFilePermissionMode,
+		defaultDirectoryPermissionMode,
+		nil,
+		recomposeUnicode,
+		nil,
+	); len(problems) != 0 {
 		return errors.New("problems occurred during removal transition")
 	} else if len(entries) != len(transitions) {
 		return errors.New("unexpected number of entries returned from removal transition")
@@ -384,7 +420,17 @@ func TestTransitionSwapFile(t *testing.T) {
 
 		// Perform the swap transition, ensure that it succeeds, and update the
 		// expected contents.
-		if entries, problems := Transition(root, transitions, cache, SymlinkMode_SymlinkPortable, recomposeUnicode, provider); len(problems) != 0 {
+		if entries, problems := Transition(
+			root,
+			transitions,
+			cache,
+			SymlinkMode_SymlinkPortable,
+			defaultFilePermissionMode,
+			defaultDirectoryPermissionMode,
+			nil,
+			recomposeUnicode,
+			provider,
+		); len(problems) != 0 {
 			return nil, errors.New("file swap transition failed")
 		} else if len(entries) != 1 {
 			return nil, errors.New("unexpected number of entries returned from swap transition")
@@ -431,7 +477,17 @@ func TestTransitionSwapFileOnlyExecutableChange(t *testing.T) {
 
 		// Perform the swap transition with a nil provider (since it shouldn't
 		// be used), ensure that it succeeds, and update the expected contents.
-		if entries, problems := Transition(root, transitions, cache, SymlinkMode_SymlinkPortable, recomposeUnicode, nil); len(problems) != 0 {
+		if entries, problems := Transition(
+			root,
+			transitions,
+			cache,
+			SymlinkMode_SymlinkPortable,
+			defaultFilePermissionMode,
+			defaultDirectoryPermissionMode,
+			nil,
+			recomposeUnicode,
+			nil,
+		); len(problems) != 0 {
 			return nil, errors.New("file swap transition failed")
 		} else if len(entries) != 1 {
 			return nil, errors.New("unexpected number of entries returned from swap transition")
@@ -531,7 +587,17 @@ func TestTransitionFailCreateInvalidPathCase(t *testing.T) {
 		defer provider.finalize()
 
 		// Perform the create transition and ensure that it fails.
-		if entries, problems := Transition(root, transitions, cache, SymlinkMode_SymlinkPortable, recomposeUnicode, provider); len(problems) == 0 {
+		if entries, problems := Transition(
+			root,
+			transitions,
+			cache,
+			SymlinkMode_SymlinkPortable,
+			defaultFilePermissionMode,
+			defaultDirectoryPermissionMode,
+			nil,
+			recomposeUnicode,
+			provider,
+		); len(problems) == 0 {
 			return nil, errors.New("transition succeeded unexpectedly")
 		} else if len(entries) != 1 {
 			return nil, errors.New("unexpected number of entries returned from creation transition")
@@ -617,7 +683,17 @@ func TestTransitionFailOnParentPathIsFile(t *testing.T) {
 	defer provider.finalize()
 
 	// Perform the creation transition and ensure that it encounters a problem.
-	if entries, problems := Transition(root, transitions, nil, SymlinkMode_SymlinkPortable, false, provider); len(problems) != 1 {
+	if entries, problems := Transition(
+		root,
+		transitions,
+		nil,
+		SymlinkMode_SymlinkPortable,
+		defaultFilePermissionMode,
+		defaultDirectoryPermissionMode,
+		nil,
+		false,
+		provider,
+	); len(problems) != 1 {
 		t.Error("transition succeeded unexpectedly")
 	} else if len(entries) != 1 {
 		t.Error("transition returned invalid number of entries")

@@ -9,16 +9,19 @@ import (
 
 	"github.com/pkg/errors"
 
+	"github.com/google/uuid"
+
 	"github.com/havoc-io/mutagen/pkg/agent"
 	"github.com/havoc-io/mutagen/pkg/daemon"
-	"github.com/havoc-io/mutagen/pkg/filesystem"
-	"github.com/havoc-io/mutagen/pkg/local"
+	"github.com/havoc-io/mutagen/pkg/prompt"
+	"github.com/havoc-io/mutagen/pkg/protocols/local"
 	"github.com/havoc-io/mutagen/pkg/session"
 	"github.com/havoc-io/mutagen/pkg/url"
 
 	// Explicitly import packages that need to register protocol handlers.
-	_ "github.com/havoc-io/mutagen/pkg/local"
-	_ "github.com/havoc-io/mutagen/pkg/ssh"
+	_ "github.com/havoc-io/mutagen/pkg/protocols/docker"
+	_ "github.com/havoc-io/mutagen/pkg/protocols/local"
+	_ "github.com/havoc-io/mutagen/pkg/protocols/ssh"
 )
 
 // daemonLock is the daemon lock manager.
@@ -80,9 +83,13 @@ func waitForSuccessfulSynchronizationCycle(sessionId string, allowConflicts, all
 	}
 }
 
-func testSessionLifecycle(alpha, beta *url.URL, configuration *session.Configuration, allowConflicts, allowProblems bool) error {
+func testSessionLifecycle(prompter string, alpha, beta *url.URL, configuration *session.Configuration, allowConflicts, allowProblems bool) error {
 	// Create a session.
-	sessionId, err := sessionManager.Create(alpha, beta, configuration, "")
+	sessionId, err := sessionManager.Create(
+		alpha, beta,
+		configuration, &session.Configuration{}, &session.Configuration{},
+		prompter,
+	)
 	if err != nil {
 		return errors.Wrap(err, "unable to create session")
 	}
@@ -138,10 +145,8 @@ func testSessionLifecycle(alpha, beta *url.URL, configuration *session.Configura
 }
 
 func TestSessionBothRootsNil(t *testing.T) {
-	// If end-to-end tests haven't been enabled, then skip this test.
-	if os.Getenv("MUTAGEN_TEST_END_TO_END") != "true" {
-		t.Skip()
-	}
+	// Allow this test to run in parallel.
+	t.Parallel()
 
 	// Create a temporary directory and defer its cleanup.
 	directory, err := ioutil.TempDir("", "mutagen_end_to_end")
@@ -158,26 +163,32 @@ func TestSessionBothRootsNil(t *testing.T) {
 	alphaURL := &url.URL{Path: alphaRoot}
 	betaURL := &url.URL{Path: betaRoot}
 
-	// Compute configuration.
-	// HACK: The notify package has a race condition on Windows that the race
-	// detector catches, so force polling there for now during tests. Force
-	// polling on macOS as well since notify seems flaky in tests there as well.
+	// Compute configuration. We use defaults for everything.
 	configuration := &session.Configuration{}
-	if runtime.GOOS == "windows" || runtime.GOOS == "darwin" {
-		configuration.WatchMode = filesystem.WatchMode_WatchForcePoll
-	}
 
 	// Test the session lifecycle.
-	if err := testSessionLifecycle(alphaURL, betaURL, configuration, false, false); err != nil {
+	if err := testSessionLifecycle("", alphaURL, betaURL, configuration, false, false); err != nil {
 		t.Fatal("session lifecycle test failed:", err)
 	}
 }
 
 func TestSessionGOROOTSrcToBeta(t *testing.T) {
-	// If end-to-end tests haven't been enabled, then skip this test.
-	if os.Getenv("MUTAGEN_TEST_END_TO_END") != "true" {
+	// Check the end-to-end test mode and compute the source synchronization
+	// root accordingly. If no mode has been specified, then skip the test.
+	endToEndTestMode := os.Getenv("MUTAGEN_TEST_END_TO_END")
+	var sourceRoot string
+	if endToEndTestMode == "" {
 		t.Skip()
+	} else if endToEndTestMode == "full" {
+		sourceRoot = filepath.Join(runtime.GOROOT(), "src")
+	} else if endToEndTestMode == "slim" {
+		sourceRoot = filepath.Join(runtime.GOROOT(), "src", "bufio")
+	} else {
+		t.Fatal("unknown end-to-end test mode specified:", endToEndTestMode)
 	}
+
+	// Allow the test to run in parallel.
+	t.Parallel()
 
 	// Create a temporary directory and defer its cleanup.
 	directory, err := ioutil.TempDir("", "mutagen_end_to_end")
@@ -187,33 +198,39 @@ func TestSessionGOROOTSrcToBeta(t *testing.T) {
 	defer os.RemoveAll(directory)
 
 	// Calculate alpha and beta paths.
-	alphaRoot := filepath.Join(runtime.GOROOT(), "src")
+	alphaRoot := sourceRoot
 	betaRoot := filepath.Join(directory, "beta")
 
 	// Compute alpha and beta URLs.
 	alphaURL := &url.URL{Path: alphaRoot}
 	betaURL := &url.URL{Path: betaRoot}
 
-	// Compute configuration.
-	// HACK: The notify package has a race condition on Windows that the race
-	// detector catches, so force polling there for now during tests. Force
-	// polling on macOS as well since notify seems flaky in tests there as well.
+	// Compute configuration. We use defaults for everything.
 	configuration := &session.Configuration{}
-	if runtime.GOOS == "windows" || runtime.GOOS == "darwin" {
-		configuration.WatchMode = filesystem.WatchMode_WatchForcePoll
-	}
 
 	// Test the session lifecycle.
-	if err := testSessionLifecycle(alphaURL, betaURL, configuration, false, false); err != nil {
+	if err := testSessionLifecycle("", alphaURL, betaURL, configuration, false, false); err != nil {
 		t.Fatal("session lifecycle test failed:", err)
 	}
 }
 
 func TestSessionGOROOTSrcToAlpha(t *testing.T) {
-	// If end-to-end tests haven't been enabled, then skip this test.
-	if os.Getenv("MUTAGEN_TEST_END_TO_END") != "true" {
+	// Check the end-to-end test mode and compute the source synchronization
+	// root accordingly. If no mode has been specified, then skip the test.
+	endToEndTestMode := os.Getenv("MUTAGEN_TEST_END_TO_END")
+	var sourceRoot string
+	if endToEndTestMode == "" {
 		t.Skip()
+	} else if endToEndTestMode == "full" {
+		sourceRoot = filepath.Join(runtime.GOROOT(), "src")
+	} else if endToEndTestMode == "slim" {
+		sourceRoot = filepath.Join(runtime.GOROOT(), "src", "bufio")
+	} else {
+		t.Fatal("unknown end-to-end test mode specified:", endToEndTestMode)
 	}
+
+	// Allow the test to run in parallel.
+	t.Parallel()
 
 	// Create a temporary directory and defer its cleanup.
 	directory, err := ioutil.TempDir("", "mutagen_end_to_end")
@@ -224,77 +241,38 @@ func TestSessionGOROOTSrcToAlpha(t *testing.T) {
 
 	// Calculate alpha and beta paths.
 	alphaRoot := filepath.Join(directory, "alpha")
-	betaRoot := filepath.Join(runtime.GOROOT(), "src")
+	betaRoot := sourceRoot
 
 	// Compute alpha and beta URLs.
 	alphaURL := &url.URL{Path: alphaRoot}
 	betaURL := &url.URL{Path: betaRoot}
 
-	// Compute configuration.
-	// HACK: The notify package has a race condition on Windows that the race
-	// detector catches, so force polling there for now during tests. Force
-	// polling on macOS as well since notify seems flaky in tests there as well.
+	// Compute configuration. We use defaults for everything.
 	configuration := &session.Configuration{}
-	if runtime.GOOS == "windows" || runtime.GOOS == "darwin" {
-		configuration.WatchMode = filesystem.WatchMode_WatchForcePoll
-	}
 
 	// Test the session lifecycle.
-	if err := testSessionLifecycle(alphaURL, betaURL, configuration, false, false); err != nil {
-		t.Fatal("session lifecycle test failed:", err)
-	}
-}
-
-func TestSessionGOROOTSrcToBetaOverSSH(t *testing.T) {
-	// If end-to-end tests haven't been enabled, then skip this test.
-	if os.Getenv("MUTAGEN_TEST_END_TO_END") != "true" {
-		t.Skip()
-	}
-
-	// If localhost SSH support isn't available, then skip this test.
-	if os.Getenv("MUTAGEN_TEST_SSH") != "true" {
-		t.Skip()
-	}
-
-	// Create a temporary directory and defer its cleanup.
-	directory, err := ioutil.TempDir("", "mutagen_end_to_end")
-	if err != nil {
-		t.Fatal("unable to create temporary directory:", err)
-	}
-	defer os.RemoveAll(directory)
-
-	// Calculate alpha and beta paths.
-	alphaRoot := filepath.Join(runtime.GOROOT(), "src")
-	betaRoot := filepath.Join(directory, "beta")
-
-	// Compute alpha and beta URLs.
-	alphaURL := &url.URL{Path: alphaRoot}
-	betaURL := &url.URL{
-		Protocol: url.Protocol_SSH,
-		Hostname: "localhost",
-		Path:     betaRoot,
-	}
-
-	// Compute configuration.
-	// HACK: The notify package has a race condition on Windows that the race
-	// detector catches, so force polling there for now during tests. Force
-	// polling on macOS as well since notify seems flaky in tests there as well.
-	configuration := &session.Configuration{}
-	if runtime.GOOS == "windows" || runtime.GOOS == "darwin" {
-		configuration.WatchMode = filesystem.WatchMode_WatchForcePoll
-	}
-
-	// Test the session lifecycle.
-	if err := testSessionLifecycle(alphaURL, betaURL, configuration, false, false); err != nil {
+	if err := testSessionLifecycle("", alphaURL, betaURL, configuration, false, false); err != nil {
 		t.Fatal("session lifecycle test failed:", err)
 	}
 }
 
 func TestSessionGOROOTSrcToBetaInMemory(t *testing.T) {
-	// If end-to-end tests haven't been enabled, then skip this test.
-	if os.Getenv("MUTAGEN_TEST_END_TO_END") != "true" {
+	// Check the end-to-end test mode and compute the source synchronization
+	// root accordingly. If no mode has been specified, then skip the test.
+	endToEndTestMode := os.Getenv("MUTAGEN_TEST_END_TO_END")
+	var sourceRoot string
+	if endToEndTestMode == "" {
 		t.Skip()
+	} else if endToEndTestMode == "full" {
+		sourceRoot = filepath.Join(runtime.GOROOT(), "src")
+	} else if endToEndTestMode == "slim" {
+		sourceRoot = filepath.Join(runtime.GOROOT(), "src", "bufio")
+	} else {
+		t.Fatal("unknown end-to-end test mode specified:", endToEndTestMode)
 	}
+
+	// Allow the test to run in parallel.
+	t.Parallel()
 
 	// Create a temporary directory and defer its cleanup.
 	directory, err := ioutil.TempDir("", "mutagen_end_to_end")
@@ -304,7 +282,7 @@ func TestSessionGOROOTSrcToBetaInMemory(t *testing.T) {
 	defer os.RemoveAll(directory)
 
 	// Calculate alpha and beta paths.
-	alphaRoot := filepath.Join(runtime.GOROOT(), "src")
+	alphaRoot := sourceRoot
 	betaRoot := filepath.Join(directory, "beta")
 
 	// Compute alpha and beta URLs. We use a special protocol with a custom
@@ -315,17 +293,153 @@ func TestSessionGOROOTSrcToBetaInMemory(t *testing.T) {
 		Path:     betaRoot,
 	}
 
-	// Compute configuration.
-	// HACK: The notify package has a race condition on Windows that the race
-	// detector catches, so force polling there for now during tests. Force
-	// polling on macOS as well since notify seems flaky in tests there as well.
+	// Compute configuration. We use defaults for everything.
 	configuration := &session.Configuration{}
-	if runtime.GOOS == "windows" || runtime.GOOS == "darwin" {
-		configuration.WatchMode = filesystem.WatchMode_WatchForcePoll
-	}
 
 	// Test the session lifecycle.
-	if err := testSessionLifecycle(alphaURL, betaURL, configuration, false, false); err != nil {
+	if err := testSessionLifecycle("", alphaURL, betaURL, configuration, false, false); err != nil {
+		t.Fatal("session lifecycle test failed:", err)
+	}
+}
+
+func TestSessionGOROOTSrcToBetaOverSSH(t *testing.T) {
+	// If localhost SSH support isn't available, then skip this test.
+	if os.Getenv("MUTAGEN_TEST_SSH") != "true" {
+		t.Skip()
+	}
+
+	// Check the end-to-end test mode and compute the source synchronization
+	// root accordingly. If no mode has been specified, then skip the test.
+	endToEndTestMode := os.Getenv("MUTAGEN_TEST_END_TO_END")
+	var sourceRoot string
+	if endToEndTestMode == "" {
+		t.Skip()
+	} else if endToEndTestMode == "full" {
+		sourceRoot = filepath.Join(runtime.GOROOT(), "src")
+	} else if endToEndTestMode == "slim" {
+		sourceRoot = filepath.Join(runtime.GOROOT(), "src", "bufio")
+	} else {
+		t.Fatal("unknown end-to-end test mode specified:", endToEndTestMode)
+	}
+
+	// Allow the test to run in parallel.
+	t.Parallel()
+
+	// Create a temporary directory and defer its cleanup.
+	directory, err := ioutil.TempDir("", "mutagen_end_to_end")
+	if err != nil {
+		t.Fatal("unable to create temporary directory:", err)
+	}
+	defer os.RemoveAll(directory)
+
+	// Calculate alpha and beta paths.
+	alphaRoot := sourceRoot
+	betaRoot := filepath.Join(directory, "beta")
+
+	// Compute alpha and beta URLs.
+	alphaURL := &url.URL{Path: alphaRoot}
+	betaURL := &url.URL{
+		Protocol: url.Protocol_SSH,
+		Hostname: "localhost",
+		Path:     betaRoot,
+	}
+
+	// Compute configuration. We use defaults for everything.
+	configuration := &session.Configuration{}
+
+	// Test the session lifecycle.
+	if err := testSessionLifecycle("", alphaURL, betaURL, configuration, false, false); err != nil {
+		t.Fatal("session lifecycle test failed:", err)
+	}
+}
+
+// testWindowsDockerTransportPrompter is a prompt.Prompter implementation that
+// will answer "yes" to all prompts. It's needed to confirm container restart
+// behavior in the Docker transport on Windows.
+type testWindowsDockerTransportPrompter struct{}
+
+func (t *testWindowsDockerTransportPrompter) Message(_ string) error {
+	return nil
+}
+
+func (t *testWindowsDockerTransportPrompter) Prompt(_ string) (string, error) {
+	return "yes", nil
+}
+
+func TestSessionGOROOTSrcToBetaOverDocker(t *testing.T) {
+	// If Docker test support isn't available, then skip this test.
+	if os.Getenv("MUTAGEN_TEST_DOCKER") != "true" {
+		t.Skip()
+	}
+
+	// Check the end-to-end test mode and compute the source synchronization
+	// root accordingly. If no mode has been specified, then skip the test.
+	endToEndTestMode := os.Getenv("MUTAGEN_TEST_END_TO_END")
+	var sourceRoot string
+	if endToEndTestMode == "" {
+		t.Skip()
+	} else if endToEndTestMode == "full" {
+		sourceRoot = filepath.Join(runtime.GOROOT(), "src")
+	} else if endToEndTestMode == "slim" {
+		sourceRoot = filepath.Join(runtime.GOROOT(), "src", "bufio")
+	} else {
+		t.Fatal("unknown end-to-end test mode specified:", endToEndTestMode)
+	}
+
+	// Allow the test to run in parallel.
+	t.Parallel()
+
+	// If we're on Windows, register a prompter that will answer yes to
+	// questions about stoping and restarting containers.
+	var prompter string
+	if runtime.GOOS == "windows" {
+		if p, err := prompt.RegisterPrompter(&testWindowsDockerTransportPrompter{}); err != nil {
+			t.Fatal("unable to register prompter:", err)
+		} else {
+			prompter = p
+			defer prompt.UnregisterPrompter(prompter)
+		}
+	}
+
+	// Create a unique directory name for synchronization into the container. We
+	// don't clean it up, because it will be wiped out when the test container
+	// is deleted.
+	randomUUID, err := uuid.NewRandom()
+	if err != nil {
+		t.Fatal("unable to create random directory UUID:", err)
+	}
+
+	// Calculate alpha and beta paths.
+	alphaRoot := sourceRoot
+	betaRoot := "~/" + randomUUID.String()
+
+	// Grab Docker environment variables.
+	environment := make(map[string]string, len(url.DockerEnvironmentVariables))
+	for _, variable := range url.DockerEnvironmentVariables {
+		environment[variable] = os.Getenv(variable)
+	}
+
+	// Compute alpha and beta URLs.
+	alphaURL := &url.URL{Path: alphaRoot}
+	betaURL := &url.URL{
+		Protocol:    url.Protocol_Docker,
+		Username:    os.Getenv("MUTAGEN_TEST_DOCKER_USERNAME"),
+		Hostname:    os.Getenv("MUTAGEN_TEST_DOCKER_CONTAINER_NAME"),
+		Path:        betaRoot,
+		Environment: environment,
+	}
+
+	// Verify that the beta URL is valid (this will validate the test
+	// environment variables as well).
+	if err := betaURL.EnsureValid(); err != nil {
+		t.Fatal("beta URL is invalid:", err)
+	}
+
+	// Compute configuration. We use defaults for everything.
+	configuration := &session.Configuration{}
+
+	// Test the session lifecycle.
+	if err := testSessionLifecycle(prompter, alphaURL, betaURL, configuration, false, false); err != nil {
 		t.Fatal("session lifecycle test failed:", err)
 	}
 }

@@ -1,4 +1,4 @@
-// +build go1.11
+// +build go1.12
 
 package mutagen
 
@@ -12,9 +12,13 @@ const (
 	// VersionMajor represents the current major version of Mutagen.
 	VersionMajor = 0
 	// VersionMinor represents the current minor version of Mutagen.
-	VersionMinor = 6
+	VersionMinor = 9
 	// VersionPatch represents the current patch version of Mutagen.
 	VersionPatch = 0
+	// VersionTag represents a tag to be appended to the Mutagen version string.
+	// It must not contain spaces. If empty, no tag is appended to the version
+	// string.
+	VersionTag = "dev"
 )
 
 // Version provides a stringified version of the current Mutagen version.
@@ -23,7 +27,11 @@ var Version string
 // init performs global initialization.
 func init() {
 	// Compute the stringified version.
-	Version = fmt.Sprintf("%d.%d.%d", VersionMajor, VersionMinor, VersionPatch)
+	if VersionTag != "" {
+		Version = fmt.Sprintf("%d.%d.%d-%s", VersionMajor, VersionMinor, VersionPatch, VersionTag)
+	} else {
+		Version = fmt.Sprintf("%d.%d.%d", VersionMajor, VersionMinor, VersionPatch)
+	}
 }
 
 // versionBytes is a type that can be used to send and receive version

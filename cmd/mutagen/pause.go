@@ -58,6 +58,8 @@ func pauseMain(command *cobra.Command, arguments []string) error {
 		if response, err := stream.Recv(); err != nil {
 			statusLinePrinter.BreakIfNonEmpty()
 			return errors.Wrap(peelAwayRPCErrorLayer(err), "pause failed")
+		} else if err = response.EnsureValid(); err != nil {
+			return errors.Wrap(err, "invalid pause response received")
 		} else if response.Message == "" {
 			statusLinePrinter.Clear()
 			return nil
@@ -78,14 +80,21 @@ var pauseCommand = &cobra.Command{
 }
 
 var pauseConfiguration struct {
-	all  bool
+	// help indicates whether or not help information should be shown for the
+	// command.
 	help bool
+	// all indicates whether or not all sessions should be paused.
+	all bool
 }
 
 func init() {
-	// Bind flags to configuration. We manually add help to override the default
-	// message, but Cobra still implements it automatically.
+	// Grab a handle for the command line flags.
 	flags := pauseCommand.Flags()
-	flags.BoolVarP(&pauseConfiguration.all, "all", "a", false, "Pause all sessions")
+
+	// Manually add a help flag to override the default message. Cobra will
+	// still implement its logic automatically.
 	flags.BoolVarP(&pauseConfiguration.help, "help", "h", false, "Show help information")
+
+	// Wire up pause flags.
+	flags.BoolVarP(&pauseConfiguration.all, "all", "a", false, "Pause all sessions")
 }

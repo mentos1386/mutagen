@@ -10,29 +10,65 @@ import (
 
 // Configuration represents the global Mutagen configuration.
 type Configuration struct {
+	// Synchronization contains parameters related to synchronization behavior.
+	Synchronization struct {
+		// Mode specifies the default synchronization mode.
+		Mode sync.SynchronizationMode `toml:"mode"`
+		// MaximumEntryCount specifies the maximum number of filesystem entries
+		// that endpoints will tolerate managing.
+		MaximumEntryCount uint64 `toml:"maxEntryCount"`
+		// MaximumStagingFileSize is the maximum (individual) file size that
+		// endpoints will stage. It can be specified in human-friendly units.
+		MaximumStagingFileSize ByteSize `toml:"maxStagingFileSize"`
+	} `toml:"sync"`
+
 	// Ignore contains parameters related to synchronization ignore
 	// specifications.
 	Ignore struct {
-		Default []string           `toml:"default"`
-		VCS     sync.IgnoreVCSMode `toml:"vcs"`
+		// Default specifies the default list of ignore specifications.
+		Default []string `toml:"default"`
+
+		// VCS specifies the VCS ignore mode.
+		VCS sync.IgnoreVCSMode `toml:"vcs"`
 	} `toml:"ignore"`
 
 	// Symlink contains parameters related to symlink handling.
 	Symlink struct {
-		// Mode specifies the default symlink mode.
+		// Mode specifies the symlink mode.
 		Mode sync.SymlinkMode `toml:"mode"`
 	} `toml:"symlink"`
 
 	// Watch contains parameters related to filesystem monitoring.
 	Watch struct {
-		// Mode specifies the default watch mode.
+		// Mode specifies the file watching mode.
 		Mode filesystem.WatchMode `toml:"mode"`
 
 		// PollingInterval specifies the interval (in seconds) for poll-based
-		// file monitoring. A value of 0 specifies that the default interval
-		// should be used.
+		// file monitoring. A value of 0 specifies that Mutagen's internal
+		// default interval should be used.
 		PollingInterval uint32 `toml:"pollingInterval"`
 	} `toml:"watch"`
+
+	// Permissions contains parameters related to permission handling.
+	Permissions struct {
+		// DefaultFileMode specifies the default permission mode to use for new
+		// files in "portable" permission propagation mode.
+		DefaultFileMode filesystem.Mode `toml:"defaultFileMode"`
+
+		// DefaultDirectoryMode specifies the default permission mode to use for
+		// new files in "portable" permission propagation mode.
+		DefaultDirectoryMode filesystem.Mode `toml:"defaultDirectoryMode"`
+
+		// DefaultOwner specifies the default owner identifier to use when
+		// setting ownership of new files and directories in "portable"
+		// permission propagation mode.
+		DefaultOwner string `toml:"defaultOwner"`
+
+		// DefaultGroup specifies the default group identifier to use when
+		// setting ownership of new files and directories in "portable"
+		// permission propagation mode.
+		DefaultGroup string `toml:"defaultGroup"`
+	} `toml:"permissions"`
 }
 
 // loadFromPath is the internal loading function. We keep it separate from Load

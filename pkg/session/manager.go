@@ -1,6 +1,7 @@
 package session
 
 import (
+	contextpkg "context"
 	"sort"
 	"strings"
 
@@ -37,7 +38,7 @@ func NewManager() (*Manager, error) {
 	if err != nil {
 		return nil, errors.Wrap(err, "unable to compute sessions directory")
 	}
-	sessionsDirectoryContents, err := filesystem.DirectoryContents(sessionsDirectory)
+	sessionsDirectoryContents, err := filesystem.DirectoryContentsByPath(sessionsDirectory)
 	if err != nil {
 		return nil, errors.Wrap(err, "unable to read contents of sessions directory")
 	}
@@ -152,9 +153,18 @@ func (m *Manager) Shutdown() {
 }
 
 // Create tells the manager to create a new session.
-func (m *Manager) Create(alpha, beta *url.URL, configuration *Configuration, prompter string) (string, error) {
+func (m *Manager) Create(
+	alpha, beta *url.URL,
+	configuration, configurationAlpha, configurationBeta *Configuration,
+	prompter string,
+) (string, error) {
 	// Attempt to create a session.
-	controller, err := newSession(m.tracker, alpha, beta, configuration, prompter)
+	controller, err := newSession(
+		m.tracker,
+		alpha, beta,
+		configuration, configurationAlpha, configurationBeta,
+		prompter,
+	)
 	if err != nil {
 		return "", err
 	}
@@ -202,6 +212,29 @@ func (m *Manager) List(previousStateIndex uint64, specifications []string) (uint
 
 	// Success.
 	return stateIndex, states, nil
+}
+
+// Flush tells the manager to flush sessions matching the given specifications.
+func (m *Manager) Flush(specifications []string, prompter string, skipWait bool, context contextpkg.Context) error {
+	// Extract the controllers for the sessions of interest.
+	var controllers []*controller
+	if len(specifications) == 0 {
+		controllers = m.allControllers()
+	} else if cs, err := m.findControllers(specifications); err != nil {
+		return errors.Wrap(err, "unable to locate requested sessions")
+	} else {
+		controllers = cs
+	}
+
+	// Attempt to flush the sessions.
+	for _, controller := range controllers {
+		if err := controller.flush(prompter, skipWait, context); err != nil {
+			return errors.Wrap(err, "unable to flush session")
+		}
+	}
+
+	// Success.
+	return nil
 }
 
 // Pause tells the manager to pause sessions matching the given specifications.

@@ -14,11 +14,12 @@ import (
 	sessionsvcpkg "github.com/havoc-io/mutagen/pkg/service/session"
 	sessionpkg "github.com/havoc-io/mutagen/pkg/session"
 	"github.com/havoc-io/mutagen/pkg/sync"
+	urlpkg "github.com/havoc-io/mutagen/pkg/url"
 )
 
 func formatPath(path string) string {
 	if path == "" {
-		return "(root)"
+		return "<root>"
 	}
 	return path
 }
@@ -30,33 +31,20 @@ func formatConnectionStatus(connected bool) string {
 	return "Disconnected"
 }
 
-func printEndpointStatus(state *sessionpkg.State, alpha bool) {
-	// Print the header for this endpoint.
-	header := "Alpha:"
-	if !alpha {
-		header = "Beta:"
-	}
-	fmt.Println(header)
+func printEndpointStatus(name string, url *urlpkg.URL, connected bool, problems []*sync.Problem) {
+	// Print header.
+	fmt.Printf("%s:\n", name)
 
-	// Print URL.
-	url := state.Session.Alpha
-	if !alpha {
-		url = state.Session.Beta
+	// Print URL if we're not in long-listing mode (otherwise it will be
+	// printed elsewhere).
+	if !listConfiguration.long {
+		fmt.Println("\tURL:", url.Format("\n\t\t"))
 	}
-	fmt.Println("\tURL:", url.Format())
 
-	// Print status.
-	connected := state.AlphaConnected
-	if !alpha {
-		connected = state.BetaConnected
-	}
-	fmt.Println("\tStatus:", formatConnectionStatus(connected))
+	// Print connection status.
+	fmt.Printf("\tConnection state: %s\n", formatConnectionStatus(connected))
 
 	// Print problems, if any.
-	problems := state.AlphaProblems
-	if !alpha {
-		problems = state.BetaProblems
-	}
 	if len(problems) > 0 {
 		color.Red("\tProblems:\n")
 		for _, p := range problems {
@@ -90,7 +78,7 @@ func formatEntryKind(entry *sync.Entry) string {
 		}
 		return fmt.Sprintf("File (%x)", entry.Digest)
 	} else if entry.Kind == sync.EntryKind_Symlink {
-		return fmt.Sprintf("Symlink (%s)", entry.Target)
+		return fmt.Sprintf("Symbolic Link (%s)", entry.Target)
 	} else {
 		return "<unknown>"
 	}
@@ -147,6 +135,8 @@ func listMain(command *cobra.Command, arguments []string) error {
 	response, err := sessionService.List(context.Background(), request)
 	if err != nil {
 		return errors.Wrap(peelAwayRPCErrorLayer(err), "list failed")
+	} else if err = response.EnsureValid(); err != nil {
+		return errors.Wrap(err, "invalid list response received")
 	}
 
 	// Validate the list response contents.
@@ -160,8 +150,8 @@ func listMain(command *cobra.Command, arguments []string) error {
 	for _, state := range response.SessionStates {
 		fmt.Println(delimiterLine)
 		printSession(state, listConfiguration.long)
-		printEndpointStatus(state, true)
-		printEndpointStatus(state, false)
+		printEndpointStatus("Alpha", state.Session.Alpha, state.AlphaConnected, state.AlphaProblems)
+		printEndpointStatus("Beta", state.Session.Beta, state.BetaConnected, state.BetaProblems)
 		printSessionStatus(state)
 		if len(state.Conflicts) > 0 {
 			printConflicts(state.Conflicts)
@@ -184,14 +174,21 @@ var listCommand = &cobra.Command{
 }
 
 var listConfiguration struct {
+	// help indicates whether or not help information should be shown for the
+	// command.
 	help bool
+	// long indicates whether or not to use long-format listing.
 	long bool
 }
 
 func init() {
-	// Bind flags to configuration. We manually add help to override the default
-	// message, but Cobra still implements it automatically.
+	// Grab a handle for the command line flags.
 	flags := listCommand.Flags()
+
+	// Manually add a help flag to override the default message. Cobra will
+	// still implement its logic automatically.
 	flags.BoolVarP(&listConfiguration.help, "help", "h", false, "Show help information")
+
+	// Wire up list flags.
 	flags.BoolVarP(&listConfiguration.long, "long", "l", false, "Show detailed session information")
 }

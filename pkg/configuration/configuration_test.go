@@ -8,7 +8,12 @@ import (
 
 const (
 	testConfigurationGibberish = "[a+1a4"
-	testConfigurationValid     = `[symlink]
+	testConfigurationValid     = `[sync]
+mode = "two-way-resolved"
+maxEntryCount = 500
+maxStagingFileSize = "1000 GB"
+
+[symlink]
 mode = "portable"
 
 [watch]
@@ -17,6 +22,12 @@ pollingInterval = 5
 
 [ignore]
 default = ["ignore/this/**", "!ignore/this/that"]
+
+[permissions]
+defaultFileMode = 644
+defaultDirectoryMode = 0755
+defaultOwner = "george"
+defaultGroup = "presidents"
 `
 )
 

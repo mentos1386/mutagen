@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"os"
 	"os/exec"
 
 	"github.com/pkg/errors"
@@ -14,14 +15,30 @@ import (
 type Transport interface {
 	// Copy copies the specified local file (which is guaranteed to exist and be
 	// a file) to the remote. The provided local path will be absolute. The
-	// remote path will be either absolute or relative to the user's home
-	// directory on the remote.
-	Copy(localPath, remotePath string) error
+	// remote path will be a filename (i.e. without path separators) that should
+	// be treated as being relative to the user's home directory.
+	Copy(localPath, remoteName string) error
 	// Command creates (but does not start) a process that will invoke the
 	// specified command on the specified remote. It should not re-direct any of
 	// the output streams of the process. The command on the remote must be
-	// invoked with the user's home directory as the working directory.
+	// invoked with the user's home directory as the working directory. Any
+	// command provided to this interface is guaranteed to be lexable by simply
+	// splitting on spaces.
 	Command(command string) (*exec.Cmd, error)
+	// ClassifyError is used to determine how the agent dialing infrastructure
+	// should attempt to handle failure when launching agents. It is provided
+	// with the process exit state as well as a string containing the standard
+	// error output from the command. It should return a bool representing
+	// whether or not the error condition represents a failure due to an agent
+	// either not being installed or being installed improperly and a bool
+	// representing whether or not the remote system should be treated as a
+	// cmd.exe-like environment on Windows. If neither of these can be
+	// determined reliably, this method should return an error to abort dialing.
+	// If the second bool changes the dialer's platform hypothesis, it will
+	// attempt to reconnect using the correct command syntax for that platform.
+	// Otherwise, if the first bool indicates that the agent binary simply needs
+	// to be (re-)installed, it will attempt to do so and then reconnect.
+	ClassifyError(processState *os.ProcessState, errorOutput string) (bool, bool, error)
 }
 
 // run is a utility method that invoke's a command via a transport, waits for it

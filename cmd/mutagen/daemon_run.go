@@ -12,6 +12,7 @@ import (
 
 	"github.com/havoc-io/mutagen/cmd"
 	"github.com/havoc-io/mutagen/pkg/daemon"
+	mgrpc "github.com/havoc-io/mutagen/pkg/grpc"
 	daemonsvc "github.com/havoc-io/mutagen/pkg/service/daemon"
 	promptsvc "github.com/havoc-io/mutagen/pkg/service/prompt"
 	sessionsvc "github.com/havoc-io/mutagen/pkg/service/session"
@@ -33,8 +34,17 @@ func daemonRunMain(command *cobra.Command, arguments []string) error {
 	}
 	defer lock.Unlock()
 
+	// Create a channel to track termination signals. We do this before creating
+	// and starting other infrastructure so that we can ensure things terminate
+	// smoothly, not mid-initialization.
+	signalTermination := make(chan os.Signal, 1)
+	signal.Notify(signalTermination, cmd.TerminationSignals...)
+
 	// Create the gRPC server.
-	server := grpc.NewServer()
+	server := grpc.NewServer(
+		grpc.MaxSendMsgSize(mgrpc.MaximumIPCMessageSize),
+		grpc.MaxRecvMsgSize(mgrpc.MaximumIPCMessageSize),
+	)
 
 	// Create and register the daemon service and defer its shutdown.
 	daemonServer := daemonsvc.New()
@@ -68,8 +78,6 @@ func daemonRunMain(command *cobra.Command, arguments []string) error {
 
 	// Wait for termination from a signal, the server, or the daemon server. We
 	// treat daemon termination as a non-error.
-	signalTermination := make(chan os.Signal, 1)
-	signal.Notify(signalTermination, cmd.TerminationSignals...)
 	select {
 	case sig := <-signalTermination:
 		return errors.Errorf("terminated by signal: %s", sig)
@@ -88,12 +96,16 @@ var daemonRunCommand = &cobra.Command{
 }
 
 var daemonRunConfiguration struct {
+	// help indicates whether or not help information should be shown for the
+	// command.
 	help bool
 }
 
 func init() {
-	// Bind flags to configuration. We manually add help to override the default
-	// message, but Cobra still implements it automatically.
+	// Grab a handle for the command line flags.
 	flags := daemonRunCommand.Flags()
+
+	// Manually add a help flag to override the default message. Cobra will
+	// still implement its logic automatically.
 	flags.BoolVarP(&daemonRunConfiguration.help, "help", "h", false, "Show help information")
 }

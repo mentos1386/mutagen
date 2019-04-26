@@ -12,27 +12,16 @@ import (
 )
 
 const (
-	// decompositionProbeFileNamePrefix is the prefix used for temporary files
-	// created by the executability preservation test. It is not the complete
-	// prefix, but enough to confidently identify these files without relying on
-	// a particular Unicode decomposition behavior.
-	decompositionProbeFileNamePrefix = ".mutagen-decomposition-test-"
 	// composedFileNamePrefix is the prefix used for temporary files created by
 	// the Unicode decomposition test. It is in NFC form.
-	composedFileNamePrefix = ".mutagen-decomposition-test-\xc3\xa9ntry"
+	composedFileNamePrefix = TemporaryNamePrefix + "unicode-test-\xc3\xa9ntry"
 	// decomposedFileNamePrefix is the NFD equivalent of composedFileNamePrefix.
-	decomposedFileNamePrefix = ".mutagen-decomposition-test-\x65\xcc\x81ntry"
+	decomposedFileNamePrefix = TemporaryNamePrefix + "unicode-test-\x65\xcc\x81ntry"
 )
 
-// IsUnicodeProbeFileName determines whether or not a file name (not a file
-// path) is the name of an Unicode decomposition probe file.
-func IsUnicodeProbeFileName(name string) bool {
-	return strings.HasPrefix(name, decompositionProbeFileNamePrefix)
-}
-
-// DecomposesUnicode determines whether or not the filesystem on which the
+// DecomposesUnicodeByPath determines whether or not the filesystem on which the
 // directory at the specified path resides decomposes Unicode filenames.
-func DecomposesUnicode(path string) (bool, error) {
+func DecomposesUnicodeByPath(path string) (bool, error) {
 	// Create and close a temporary file using the composed filename.
 	file, err := ioutil.TempFile(path, composedFileNamePrefix)
 	if err != nil {
@@ -61,7 +50,7 @@ func DecomposesUnicode(path string) (bool, error) {
 	}()
 
 	// Grab the contents of the path.
-	contents, err := DirectoryContents(path)
+	contents, err := DirectoryContentsByPath(path)
 	if err != nil {
 		return false, errors.Wrap(err, "unable to read directory contents")
 	}
@@ -73,6 +62,55 @@ func DecomposesUnicode(path string) (bool, error) {
 		if name == decomposedFilename {
 			return true, nil
 		} else if name == composedFilename {
+			return false, nil
+		}
+	}
+
+	// If we didn't find any match, something's fishy.
+	return false, errors.New("unable to find test file after creation")
+}
+
+// DecomposesUnicode determines whether or not the specified directory (and its
+// underlying filesystem) decomposes Unicode filenames.
+func DecomposesUnicode(directory *Directory) (bool, error) {
+	// Create and close a temporary file using the composed filename.
+	composedName, file, err := directory.CreateTemporaryFile(composedFileNamePrefix)
+	if err != nil {
+		return false, errors.Wrap(err, "unable to create test file")
+	} else if err = file.Close(); err != nil {
+		return false, errors.Wrap(err, "unable to close test file")
+	}
+
+	// The name returned from CreateTemporaryFile is calculated from the
+	// provided pattern, so it will still be in a composed form. Compute the
+	// decomposed variant.
+	decomposedName := strings.Replace(
+		composedName,
+		composedFileNamePrefix,
+		decomposedFileNamePrefix,
+		1,
+	)
+
+	// Defer removal of the file. Since we don't know whether the filesystem is
+	// also normalization-insensitive, we try both compositions.
+	defer func() {
+		if directory.RemoveFile(composedName) != nil {
+			directory.RemoveFile(decomposedName)
+		}
+	}()
+
+	// Grab the content names in the directory.
+	names, err := directory.ReadContentNames()
+	if err != nil {
+		return false, errors.Wrap(err, "unable to read directory content names")
+	}
+
+	// Loop through the names and see if we find a match for either the composed
+	// or decomposed name.
+	for _, name := range names {
+		if name == decomposedName {
+			return true, nil
+		} else if name == composedName {
 			return false, nil
 		}
 	}

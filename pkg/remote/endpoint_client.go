@@ -40,10 +40,21 @@ func NewEndpointClient(
 	configuration *session.Configuration,
 	alpha bool,
 ) (session.Endpoint, error) {
-	// Send our version to the server.
-	if err := mutagen.SendVersion(connection); err != nil {
+	// Receive the server's magic number. We treat a mismatch of the magic
+	// number as a transport error as well, because it indicates that we're not
+	// actually talking to a Mutagen server.
+	if magicOk, err := receiveAndCompareMagicNumber(connection, serverMagicNumber); err != nil {
 		connection.Close()
-		return nil, &handshakeTransportError{errors.Wrap(err, "unable to send client version")}
+		return nil, &handshakeTransportError{errors.Wrap(err, "unable to receive server magic number")}
+	} else if !magicOk {
+		connection.Close()
+		return nil, &handshakeTransportError{errors.New("server magic number incorrect")}
+	}
+
+	// Send our magic number to the server.
+	if err := sendMagicNumber(connection, clientMagicNumber); err != nil {
+		connection.Close()
+		return nil, &handshakeTransportError{errors.Wrap(err, "unable to send client magic number")}
 	}
 
 	// Receive the server's version.
@@ -51,6 +62,12 @@ func NewEndpointClient(
 	if err != nil {
 		connection.Close()
 		return nil, &handshakeTransportError{errors.Wrap(err, "unable to receive server version")}
+	}
+
+	// Send our version to the server.
+	if err := mutagen.SendVersion(connection); err != nil {
+		connection.Close()
+		return nil, &handshakeTransportError{errors.Wrap(err, "unable to send client version")}
 	}
 
 	// Ensure that our Mutagen versions are compatible. For now, we enforce that
@@ -67,6 +84,8 @@ func NewEndpointClient(
 		connection.Close()
 		return nil, errors.New("version mismatch")
 	}
+
+	// TODO: Finish version negotiation.
 
 	// Enable read/write compression on the connection.
 	reader := compression.NewDecompressingReader(connection)
@@ -248,18 +267,19 @@ func (e *endpointClient) Scan(ancestor *sync.Entry) (*sync.Entry, bool, error, b
 }
 
 // Stage implements the Stage method for remote endpoints.
-func (e *endpointClient) Stage(entries map[string][]byte) ([]string, []*rsync.Signature, rsync.Receiver, error) {
+func (e *endpointClient) Stage(paths []string, digests [][]byte) ([]string, []*rsync.Signature, rsync.Receiver, error) {
 	// If there are no entries to stage, then we're done. We enforce (in message
 	// validation) that stage requests aren't sent to the server with no entries
 	// present.
-	if len(entries) == 0 {
+	if len(paths) == 0 {
 		return nil, nil, nil, nil
 	}
 
 	// Create and send the stage request.
 	request := &EndpointRequest{
 		Stage: &StageRequest{
-			Entries: entries,
+			Paths:   paths,
+			Digests: digests,
 		},
 	}
 	if err := e.encoder.Encode(request); err != nil {
